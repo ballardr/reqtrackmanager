@@ -103,6 +103,7 @@ class RequirementVersion(UUIDPKMixin, Base):
             (enforces C-G-12).
         change_note: Free-text reason for the change, shown in the change
             log (C-A-09).
+        project_type_id: The requirement's type, a `ProjectRequirementType` row; null when untyped.
     """
 
     __tablename__ = "requirement_versions"
@@ -136,6 +137,11 @@ class RequirementVersion(UUIDPKMixin, Base):
         UUID(as_uuid=True), ForeignKey("project_stages.id", ondelete="CASCADE"), nullable=False
     )
     level: Mapped[RequirementLevel] = mapped_column(str_enum(RequirementLevel, 20), default=RequirementLevel.REQUIREMENT)
+    # The requirement's type (a project type row, `models.requirement_type`); null for an untyped requirement. Versioned
+    # content, so retyping an approved requirement goes through a change request like every other field here.
+    project_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_requirement_types.id", ondelete="SET NULL"), nullable=True
+    )
     owner_type: Mapped[str] = principal_type_column()
     owner_id: Mapped[uuid.UUID] = principal_id_column()
     approval_authority_id: Mapped[uuid.UUID | None] = mapped_column(

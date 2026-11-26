@@ -393,7 +393,8 @@ class TypeVocabulary:
     def create_project_local(
         self, db: Session, project_id: uuid.UUID, name: str, *, display_order: int | None = None, **extras: Any,
     ):
-        """Creates a fully project-local type (`extras`: values for `extra_columns`).
+        """Creates a fully project-local type (`extras`: values for `extra_columns`); without `display_order` it is
+        placed after every entry the project's list shows.
 
         Raises:
             ValueError: If the project already has a local type named `name`.
@@ -406,7 +407,11 @@ class TypeVocabulary:
         ) is not None:
             raise ValueError(f"A project-local {self.label} named {name!r} already exists for this project.")
         if display_order is None:
-            display_order = len(db.scalars(select(self.project_model.id).where(self.project_model.project_id == project_id)).all())
+            from app.models.project import Project
+
+            organization_id = db.scalar(select(Project.organization_id).where(Project.id == project_id))
+            listed = self.resolve_effective(db, project_id, organization_id) if organization_id is not None else []
+            display_order = max((e.display_order for e in listed), default=-1) + 1
         row = self.project_model(
             project_id=project_id, org_type_id=None, name_override=name, display_order_override=display_order,
             is_enabled=True, **extras,

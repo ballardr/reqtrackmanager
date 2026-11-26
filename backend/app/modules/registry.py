@@ -3779,6 +3779,7 @@ def run_on_org_created_hooks(
             not an empty set, means "not specified").
     """
     from app.services.external_references import seed_org_defaults as seed_external_systems
+    from app.services.requirement_types import seed_org_defaults as seed_requirement_types
     from app.services.scoring import seed_missing_scoring_levels
 
     resolved_keys = (
@@ -3786,6 +3787,7 @@ def run_on_org_created_hooks(
     )
     seed_missing_scoring_levels(db, organization_id)
     seed_external_systems(db, organization_id)
+    seed_requirement_types(db, organization_id)
     for definition in get_module_registry().values():
         if definition.on_org_created is not None:
             definition.on_org_created(db, organization_id)

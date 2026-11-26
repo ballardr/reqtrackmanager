@@ -49,6 +49,7 @@ from app.services.perf_dataset import textgen
 from app.services.perf_dataset.context import ANCHOR, CHUNK, PerfProjectContext, insert_rows, uuid_from
 from app.services.perf_dataset.context import poisson as _poisson
 from app.services.perf_dataset.references import write_references
+from app.services.requirement_types import REQUIREMENT_TYPES
 
 #: Final-status mix of generated requirements.
 _STATUS_MIX = (
@@ -177,6 +178,11 @@ def generate_requirements(ctx: PerfProjectContext) -> dict[str, int]:
     stage_ids = [uuid.UUID(s) for s in ctx.project.stage_ids]
     audit = AuditBuffer(ctx)
     start_counts = dict(ctx.counts)
+    # The project's requirement types, as the type rows a version stores (organisation types get a passthrough row).
+    type_row_ids = [
+        REQUIREMENT_TYPES.usable_row_id(db, project_id, org_id, entry.id)
+        for entry in REQUIREMENT_TYPES.resolve_effective(db, project_id, org_id) if entry.is_enabled
+    ]
 
     requirement_rows, version_rows = [], []
     approved_ids: list[uuid.UUID] = []
@@ -216,6 +222,7 @@ def generate_requirements(ctx: PerfProjectContext) -> dict[str, int]:
         stage_id = stage_ids[0] if rng.random() < 0.6 else rng.choice(stage_ids)
         review_date = date(2026, 1, 1) + timedelta(days=rng.randrange(0, 900)) if rng.random() < 0.3 else None
         reviewer = rng.choice(ctx.user_ids) if review_date and rng.random() < 0.7 else None
+        project_type_id = rng.choice(type_row_ids) if type_row_ids and rng.random() < 0.85 else None
         name, reasoning = textgen.title(rng), textgen.paragraphs(rng, empty_chance=0.05, short_max=3)
         clarification = textgen.paragraphs(rng, empty_chance=0.6, short_max=2)
         description = textgen.paragraphs(rng, empty_chance=0.3, short_max=4, long_chance=0.12)
@@ -248,6 +255,7 @@ def generate_requirements(ctx: PerfProjectContext) -> dict[str, int]:
                     "status": status,
                     "target_stage_id": stage_id,
                     "level": RequirementLevel.REQUIREMENT,
+                    "project_type_id": project_type_id,
                     "owner_type": PrincipalType.USER.value,
                     "owner_id": creator,
                     "approval_authority_id": approver,

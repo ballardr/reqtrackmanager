@@ -124,6 +124,8 @@ from app.services.report_pack_bundle import export_project_packs, import_project
 from app.services.report_placement_bundle import export_project_placements, import_project_placements
 from app.services.report_snippet_bundle import export_project_snippets, import_project_snippets
 from app.services.requirement_aliases import MODES, aliases_for_requirements
+from app.services.requirement_types import REQUIREMENT_TYPES
+from app.services.requirement_types import type_names as requirement_type_names
 from app.services.scoring_config import export_project_scoring, import_project_scoring
 from app.services.sequences import generate_unique_code
 from app.services.stage_workflow_bundle import (
@@ -374,11 +376,25 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
             return None, None
         return component_prefix_by_id.get(category.component_id), category.prefix
 
+    # Types travel by name (a bundle moves between organisations); read once for every version and proposal.
+    type_name_by_id = requirement_type_names(db, [
+        *db.scalars(
+            select(RequirementVersion.project_type_id).join(Requirement, Requirement.id == RequirementVersion.requirement_id)
+            .where(Requirement.project_id == project.id, RequirementVersion.project_type_id.is_not(None)).distinct()
+        ),
+        *db.scalars(
+            select(ChangeRequestVersion.proposed_project_type_id)
+            .join(ChangeRequest, ChangeRequest.id == ChangeRequestVersion.change_request_id)
+            .where(ChangeRequest.project_id == project.id, ChangeRequestVersion.proposed_project_type_id.is_not(None)).distinct()
+        ),
+    ])
+
     def serialize_requirement_version(v: RequirementVersion) -> dict:
         return {
             "version_number": v.version_number, "valid_from": _j(v.valid_from), "valid_to": _j(v.valid_to),
             "name": v.name, "reasoning": v.reasoning, "clarification": v.clarification, "description": v.description,
             "status": v.status.value, "target_stage": stage_name_by_id.get(v.target_stage_id), "level": v.level.value,
+            "type": type_name_by_id.get(v.project_type_id) if v.project_type_id else None,
             "owner": principal_to_bundle(db, v.owner_type, v.owner_id), "approval_authority_email": email(v.approval_authority_id),
             "sort_order": v.sort_order, "custom_fields": custom_fields_by_name(v.custom_fields),
             "change_request_ref": cr_ref_by_id.get(v.change_request_id) if v.change_request_id else None,
@@ -451,6 +467,9 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
                 "proposed_component_prefix": proposed_component_prefix, "proposed_category_prefix": proposed_category_prefix,
                 "proposed_target_stage": stage_name_by_id.get(cr_version.proposed_target_stage_id) if cr_version.proposed_target_stage_id else None,
                 "proposed_level": cr_version.proposed_level.value if cr_version.proposed_level else None,
+                "proposed_type": (
+                    type_name_by_id.get(cr_version.proposed_project_type_id) if cr_version.proposed_project_type_id else None
+                ),
                 "proposed_review_date": _j(cr_version.proposed_review_date), "proposed_review_lead_days": cr_version.proposed_review_lead_days,
                 "proposed_reviewer": principal_to_bundle(db, cr_version.proposed_reviewer_type, cr_version.proposed_reviewer_id),
                 "changed_fields": cr_version.changed_fields, "reason": cr_version.reason,
@@ -565,6 +584,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         "lifecycle_skip": lifecycles.export_project_skip(db, project),
         "approval_separation": approval_separation.export_project(db, project),
         "external_systems": export_project_list(db, project, EXTERNAL_SYSTEMS),
+        "requirement_types": export_project_list(db, project, REQUIREMENT_TYPES),
         "custom_field_definitions": [
             {
                 "entity_kind": d.entity_kind.value, "name": d.name, "field_type": d.field_type.value,
@@ -823,6 +843,10 @@ def _apply_project_data(
     systems = NameResolver(db, EXTERNAL_SYSTEMS, project.organization_id, project, warnings, "external system")
     systems.import_project_rows(systems_data.get("rows", []) if isinstance(systems_data, dict) else [])
     share_system_resolver(db, systems)
+    # The project's requirement types exist before any requirement that has one; the ones it hides are hidden last.
+    types_data = data.get("requirement_types") or {}
+    requirement_types = NameResolver(db, REQUIREMENT_TYPES, project.organization_id, project, warnings, "requirement type")
+    requirement_types.import_project_rows(types_data.get("rows", []) if isinstance(types_data, dict) else [])
     version_id_by_code_and_number: dict[tuple[str, int], UUID] = {}
     max_seq = 0
     for r in data.get("requirements", []):
@@ -870,7 +894,7 @@ def _apply_project_data(
                 name=v["name"], reasoning=v.get("reasoning", ""), clarification=v.get("clarification", ""),
                 description=v.get("description", ""), status=RequirementStatus(v["status"]),
                 target_stage_id=stage_id_by_name.get(v.get("target_stage")) or fallback_stage_id,
-                level=RequirementLevel(v["level"]),
+                level=RequirementLevel(v["level"]), project_type_id=requirement_types.row_id(v.get("type")),
                 **principal_columns_from_bundle(
                     db, v, "owner", organization_id=project.organization_id, project_id=project.id, users=users,
                     warnings=warnings, context=f"Requirement {r['unique_code']} v{v['version_number']} owner", required=True,
@@ -996,6 +1020,7 @@ def _apply_project_data(
                 proposed_component_id=proposed_component_id, proposed_category_id=proposed_category_id,
                 proposed_target_stage_id=stage_id_by_name.get(v["proposed_target_stage"]) if v.get("proposed_target_stage") else None,
                 proposed_level=RequirementLevel(v["proposed_level"]) if v.get("proposed_level") else None,
+                proposed_project_type_id=requirement_types.row_id(v.get("proposed_type")),
                 proposed_review_date=_date(v.get("proposed_review_date")), proposed_review_lead_days=v.get("proposed_review_lead_days"),
                 **principal_columns_from_bundle(
                     db, v, "proposed_reviewer", organization_id=project.organization_id, project_id=project.id, users=users,
@@ -1092,6 +1117,7 @@ def _apply_project_data(
         if hooks.import_late is not None:
             hooks.import_late(db, project, data, file_bytes_by_ref, current_user, users, warnings)
     systems.hide(systems_data.get("hidden", []) if isinstance(systems_data, dict) else [])
+    requirement_types.hide(types_data.get("hidden", []) if isinstance(types_data, dict) else [])
     # After every module: the project's custom scoring models and axes exist by now, and the configuration names them.
     import_project_scoring(db, project, data, warnings)
 

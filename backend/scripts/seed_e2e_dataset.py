@@ -225,10 +225,25 @@ def create_category(headers: dict, project_id: str, component_id: str, name: str
     return r.json()
 
 
+_REQUIREMENT_TYPES: dict[str, list[dict]] = {}
+_REQUIREMENTS_CREATED: dict[str, int] = {}
+
+
 def create_requirement(headers: dict, project_id: str, name: str, reasoning: str, component_id: str, category_id: str) -> dict:
+    """Creates a requirement; the project's requirement types are given out in turn (Business, Stakeholder, Project)."""
+    if project_id not in _REQUIREMENT_TYPES:
+        listed = httpx.get(f"{BASE}/projects/{project_id}/requirement-types", headers=headers, timeout=30)
+        listed.raise_for_status()
+        _REQUIREMENT_TYPES[project_id] = [t for t in listed.json() if t["is_enabled"]]
+    types = _REQUIREMENT_TYPES[project_id]
+    position = _REQUIREMENTS_CREATED.get(project_id, 0)
+    _REQUIREMENTS_CREATED[project_id] = position + 1
     r = httpx.post(
         f"{BASE}/projects/{project_id}/requirements",
-        json={"name": name, "reasoning": reasoning, "component_id": component_id, "category_id": category_id, "keywords": []},
+        json={
+            "name": name, "reasoning": reasoning, "component_id": component_id, "category_id": category_id, "keywords": [],
+            "type_id": types[position % len(types)]["id"] if types else None,
+        },
         headers=headers, timeout=30,
     )
     r.raise_for_status()

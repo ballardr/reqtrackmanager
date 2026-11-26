@@ -45,7 +45,7 @@ A module that is not enabled for a project contributes no types to it. A module 
 
 ## Parts of the module
 
-The module has ten independently switchable parts, called [sub-components](../overview.md#sub-component-enablement-finer-grained-than-a-whole-module). The five below are the Governance half. When the module is enabled, all its parts are on; an administrator switches off those not wanted.
+The module has nine independently switchable parts, called [sub-components](../overview.md#sub-component-enablement-finer-grained-than-a-whole-module). The five below are the Governance half. When the module is enabled, all its parts are on; an administrator switches off those not wanted.
 
 | Sub-component | What it provides |
 | --- | --- |
@@ -55,7 +55,7 @@ The module has ten independently switchable parts, called [sub-components](../ov
 | Baseline policies | Checks that run before a baseline |
 | Governance health | The Governance health page and its settings |
 
-The other five parts belong to the Traceability half, which is not yet available; see [Known limitations](./known-limitations.md). A part switched off hides its screens and tools and keeps its data.
+The other four parts belong to the Traceability half, which is not yet available; see [Known limitations](./known-limitations.md). A part switched off hides its screens and tools and keeps its data.
 
 ## Enabling the module
 

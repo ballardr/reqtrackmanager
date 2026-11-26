@@ -92,6 +92,7 @@ import { OrgLifecyclesPanel } from "../components/OrgLifecyclesPanel";
 import { PersonalDataPolicyPanel } from "../components/PersonalDataPolicyPanel";
 import { ProjectCodePolicyPanel } from "../components/ProjectCodePolicyPanel";
 import { OrgExternalSystemsPanel } from "../components/ExternalSystemsPanels";
+import { OrgRequirementTypesPanel } from "../components/RequirementTypesPanels";
 import { RecordCodePrefixPanel } from "../components/RecordCodePrefixPanel";
 import { RequirementAliasSettingsPanel } from "../components/RequirementAliasSettingsPanel";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
@@ -2471,6 +2472,10 @@ export function OrgAdminPage() {
                 deleteLabel={strings.orgAdmin.deleteProjectStatus}
                 addLabel={strings.orgAdmin.newProjectStatus}
               />
+            </CollapsibleSection>
+
+            <CollapsibleSection sectionKey="orgAdmin.requirementTypes" title={strings.requirementTypes.heading} help={strings.requirementTypes.orgHelp}>
+              <OrgRequirementTypesPanel orgId={org.id} />
             </CollapsibleSection>
 
             <CollapsibleSection sectionKey="orgAdmin.externalSystems" title={strings.externalSystems.heading} help={strings.externalSystems.orgHelp}>

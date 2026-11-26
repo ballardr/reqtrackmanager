@@ -11,7 +11,7 @@ Design decisions:
 - The five atoms are bare administrative permissions the module contributes through
   `ModuleDefinition.administrative_permissions`; core's `ADMINISTRATIVE_PERMISSIONS` never names them.
 - Governance atoms cover policy (lifecycle, approval, review, baseline, profiles, Health); traceability atoms cover
-  requirement types, rules, enforcement and matrices. Each is split into an organisation and a project atom so a project
+  rules, enforcement and matrices. Each is split into an organisation and a project atom so a project
   can be trusted with its own policy without being able to change what every project in the organisation inherits.
 
 Dependencies: none.
@@ -26,7 +26,6 @@ APPROVAL_POLICIES = "approval_policies"
 REVIEW_POLICIES = "review_policies"
 BASELINE_POLICIES = "baseline_policies"
 GOVERNANCE_HEALTH = "governance_health"
-REQUIREMENT_TYPES = "requirement_types"
 TRACEABILITY_RULES = "traceability_rules"
 TRACEABILITY_EXCEPTIONS = "traceability_exceptions"
 TRACEABILITY_MATRICES = "traceability_matrices"
@@ -36,7 +35,7 @@ GOVERNANCE_SUBCOMPONENTS = (
     LIFECYCLE_POLICIES, APPROVAL_POLICIES, REVIEW_POLICIES, BASELINE_POLICIES, GOVERNANCE_HEALTH,
 )
 TRACEABILITY_SUBCOMPONENTS = (
-    REQUIREMENT_TYPES, TRACEABILITY_RULES, TRACEABILITY_EXCEPTIONS, TRACEABILITY_MATRICES, CROSS_PROJECT_TRACEABILITY,
+    TRACEABILITY_RULES, TRACEABILITY_EXCEPTIONS, TRACEABILITY_MATRICES, CROSS_PROJECT_TRACEABILITY,
 )
 
 MANAGE_ORG_GOVERNANCE = "manage_org_governance"

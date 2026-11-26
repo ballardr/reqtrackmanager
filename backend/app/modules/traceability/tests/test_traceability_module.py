@@ -1,4 +1,4 @@
-"""Tests for the Traceability & Governance module registration: its ten sub-components and their `requires` links, the
+"""Tests for the Traceability & Governance module registration: its nine sub-components and their `requires` links, the
 five administrative permission atoms it contributes (vocabulary, who holds each, module and custom roles) and its roles.
 
 The atoms are a generic module extension (`ModuleDefinition.administrative_permissions`), so a duplicate of a core atom
@@ -80,14 +80,13 @@ def _grant_module_role(user_id: str, org_id: str, role_key: str, project_id: str
 # --- registration ----------------------------------------------------------------------
 
 
-def test_module_declares_ten_sub_components_with_requires():
+def test_module_declares_nine_sub_components_with_requires():
     definition = get_module(TRACEABILITY_MODULE_KEY)
     assert definition is not None
     subs = {s.key: s for s in definition.sub_components}
     assert set(subs) == {
         "lifecycle_policies", "approval_policies", "review_policies", "baseline_policies", "governance_health",
-        "requirement_types", "traceability_rules", "traceability_exceptions", "traceability_matrices",
-        "cross_project_traceability",
+        "traceability_rules", "traceability_exceptions", "traceability_matrices", "cross_project_traceability",
     }
     assert subs["traceability_exceptions"].requires == ("traceability_rules",)
     assert subs["cross_project_traceability"].requires == ("traceability_rules",)

@@ -423,6 +423,11 @@ const en = {
     changedBy: "Changed by",
     targetVersion: "Target version",
     level: "Level",
+    type: "Type",
+    noType: "No type",
+    allTypes: "All types",
+    sortType: "Type",
+    typeFilterHelp: "Shows only the {requirements} of the chosen type. A type is shown by its name, so the filter also matches the same type in related projects.",
     attachmentsLockedNotice: "This {requirement} is approved — new attachments must be added via a {changeRequest}.",
     created: "{Requirement} created",
     // Create-modal step 2 attaches files; links are chosen in step 1.
@@ -4003,6 +4008,8 @@ const en = {
     // Requirements and change requests
     requirementLevel: "How binding the {requirement} is: a Requirement must be met, a Recommended one should be met unless there is a reason not to, and an Optional one is nice to have.",
     requirementTargetVersion: "The release this {requirement} is planned for. Leave it empty while that is undecided.",
+    requirementTypeRank: "The type's priority as a whole number: 1 is the highest and a larger number is lower. Types with the same rank are peers, and a type with no rank sorts last. Lists, exports and reports can order by it. In a project, leave it empty to use the organisation's rank.",
+    requirementType: "What kind of {requirement} this is, for example Business, Stakeholder or Project, from the list the project offers. The type is part of the {requirement}'s content, so changing it once the {requirement} is approved needs a {changeRequest}. Leave it empty while undecided.",
     requirementClarification: "Extra detail that explains how to read or apply the {requirement} without changing what it requires, such as an interpretation or an example.",
     requirementReviewDate: "When this {requirement} is next due to be checked that it is still right. A review that falls due notifies the assigned reviewer.",
     requirementReminderLead: "How many days before the review date the assigned reviewer is reminded, for example 14.",
@@ -4625,6 +4632,19 @@ const en = {
     linkTemplate: "Link template",
     linkTemplatePlaceholder: "https://tracker.example/browse/{key}",
     linkTemplateAria: "Link template",
+  },
+  requirementTypes: {
+    heading: "{Requirement} types",
+    orgHelp:
+      "The kinds a {requirement} can be, in the order they are listed and reported, such as Business, Stakeholder and Project {Requirement}. Every project in the organisation offers this list; a project can rename, reorder or disable a type, add its own or hide the ones it does not use.\n"
+      + "The order is for display. A type's rank is its priority: a lower number is higher priority (1 is the top), types with the same rank are peers and a type with no rank sorts last. Which type must trace to which is set by a traceability rule, which can use the rank.",
+    projectHelp:
+      "The kinds a {requirement} in this project can be: the organisation's list plus any added here. A sub-project with no changes of its own shows its parent project's list; changing it makes it its own.\n"
+      + "Hiding a type affects only this project, and {requirements} that already use it keep it. A disabled type stays on its {requirements} but cannot be chosen again.",
+    rank: "Rank",
+    rankPlaceholder: "Rank (1 is highest)",
+    noun: "{Requirement}",
+    inUse: "This type is still used by a {requirement}. Disable it instead of deleting it.",
   },
   codePrefixes: {
     heading: "Record codes",

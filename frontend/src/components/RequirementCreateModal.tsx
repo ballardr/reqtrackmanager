@@ -19,6 +19,7 @@ import { Link } from "react-router-dom";
 
 import type { CollectedLink } from "../api/artefactLinks";
 import { api } from "../api/client";
+import { listRequirementTypes } from "../api/requirementTypes";
 import type { PlacementPair } from "../api/placements";
 import type { Category, Component, CustomFieldDefinition, FileAsset, ProjectStage, Requirement } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
@@ -42,6 +43,7 @@ import { RequirementAliasField } from "./RequirementAliasField";
 import { RequirementFields } from "./RequirementFields";
 import { EMPTY_REQUIREMENT_FIELDS, requirementPeopleAndReviewPayload, type RequirementFieldValues } from "./requirementFieldValues";
 import { TagField } from "./TagField";
+import type { EffectiveTypeRow } from "./TypeVocabularyPanels";
 
 /**
  * @param projectId The project the requirement is created in.
@@ -70,6 +72,7 @@ export function RequirementCreateModal({
   const [components, setComponents] = useState<Component[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [stages, setStages] = useState<ProjectStage[]>([]);
+  const [requirementTypes, setRequirementTypes] = useState<EffectiveTypeRow[]>([]);
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>([]);
   // Both lists start empty before the first fetch resolves, which looks like "this project has none yet"; the inline
   // component and category form is for a genuinely empty project only, so nothing shows until the fetch completes.
@@ -87,12 +90,14 @@ export function RequirementCreateModal({
   const [createdFiles, setCreatedFiles] = useState<FileAsset[]>([]);
 
   const loadMeta = useCallback(async () => {
-    const [comps, cats, stgs, defs] = await Promise.all([
+    const [comps, cats, stgs, defs, types] = await Promise.all([
       api.get<Component[]>(`/api/v1/projects/${projectId}/components`),
       api.get<Category[]>(`/api/v1/projects/${projectId}/categories`),
       api.get<ProjectStage[]>(`/api/v1/projects/${projectId}/stages`),
       api.get<CustomFieldDefinition[]>(`/api/v1/projects/${projectId}/custom-fields?entity_kind=requirement`),
+      listRequirementTypes(projectId),
     ]);
+    setRequirementTypes(types);
     setComponents(comps);
     setCategories(cats);
     setStages(stgs);
@@ -128,6 +133,7 @@ export function RequirementCreateModal({
         category_id: categoryId,
         target_stage_id: fields.targetStageId,
         level: fields.level,
+        type_id: fields.typeId || null,
         ...requirementPeopleAndReviewPayload(fields),
         keywords: [],
         additional_places: additionalPlaces
@@ -218,6 +224,7 @@ export function RequirementCreateModal({
             values={fields}
             onChange={setFields}
             stages={stages}
+            requirementTypes={requirementTypes}
             orgUsers={orgUsers}
             organizationId={project.organization_id}
             projectId={projectId}

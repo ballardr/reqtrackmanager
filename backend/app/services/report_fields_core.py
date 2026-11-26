@@ -29,6 +29,7 @@ from app.models.project import ProjectCategory, ProjectComponent, ProjectStage
 from app.models.requirement import Requirement, RequirementVersion
 from app.models.requirement_action import RequirementAction
 from app.models.requirement_alias import RequirementAlias
+from app.models.requirement_type import ProjectRequirementType, RequirementTypeDefinition
 from app.models.stage_workflow import StagePhasePlan, StageWorkflowPhase
 from app.modules.registry import ReportFieldProvider
 from app.services.report_fields import (
@@ -38,6 +39,7 @@ from app.services.report_fields import (
     from_search,
     instant_field,
     name_lookup_field,
+    number_field,
     principal_field,
     text_field,
 )
@@ -74,6 +76,28 @@ def _alias_codes() -> Any:
     )
 
 
+def _requirement_type_name() -> Any:
+    """A correlated subquery: the name of the requirement type the current version holds (NULL when untyped)."""
+    return (
+        select(func.coalesce(ProjectRequirementType.name_override, RequirementTypeDefinition.name))
+        .select_from(ProjectRequirementType)
+        .outerjoin(RequirementTypeDefinition, RequirementTypeDefinition.id == ProjectRequirementType.org_type_id)
+        .where(ProjectRequirementType.id == RequirementVersion.project_type_id)
+        .scalar_subquery()
+    )
+
+
+def _requirement_type_rank() -> Any:
+    """A correlated subquery: the rank of the requirement type the current version holds (NULL when untyped or unranked)."""
+    return (
+        select(func.coalesce(ProjectRequirementType.rank, RequirementTypeDefinition.rank))
+        .select_from(ProjectRequirementType)
+        .outerjoin(RequirementTypeDefinition, RequirementTypeDefinition.id == ProjectRequirementType.org_type_id)
+        .where(ProjectRequirementType.id == RequirementVersion.project_type_id)
+        .scalar_subquery()
+    )
+
+
 CORE_REPORT_FIELDS: dict[str, ReportFieldProvider] = {
     "requirement": from_search(
         CORE_SEARCH_PROVIDERS["requirement"],
@@ -97,6 +121,8 @@ CORE_REPORT_FIELDS: dict[str, ReportFieldProvider] = {
         date_field("target_stage_phase_expected_end", "Target stage phase expected end", _target_stage_plan(StagePhasePlan.expected_to)),
         instant_field("target_stage_phase_started_at", "Target stage phase started at", _target_stage_plan(StagePhasePlan.started_at)),
         enum_field("level", "Level", RequirementVersion.level, RequirementLevel),
+        text_field("requirement_type", "Requirement type", _requirement_type_name()),
+        number_field("requirement_type_rank", "Requirement type rank", _requirement_type_rank()),
         # The codes of the further places the requirement sits in (its aliases), so a layout can print them.
         text_field("alias_codes", "Alias codes", _alias_codes()),
         principal_field("owner", "Owner", RequirementVersion.owner_type, RequirementVersion.owner_id),

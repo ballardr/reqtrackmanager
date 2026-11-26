@@ -17,6 +17,7 @@ import { useEffect, useState } from "react";
 
 import { DRAFT_ARTEFACT_ID, type CollectedLink } from "../api/artefactLinks";
 import { api } from "../api/client";
+import { listRequirementTypes } from "../api/requirementTypes";
 import type {
   Category, ChangeableRequirementField, ChangeRequest, Component, CustomFieldDefinition, FileAsset, OrgUser, PrincipalRef,
   Project, ProjectStage, Requirement, RequirementLevel,
@@ -41,7 +42,9 @@ import { Modal } from "./Modal";
 import { PrimaryPlaceField } from "./PrimaryPlaceField";
 import { PrincipalPicker } from "./PrincipalPicker";
 import { ProposedLinksEditor } from "./ProposedLinksEditor";
+import { requirementTypeOptions, requirementTypeSelection } from "./requirementFieldValues";
 import { TagField } from "./TagField";
+import type { EffectiveTypeRow } from "./TypeVocabularyPanels";
 import { labelOptions } from "../utils/labelOptions";
 
 interface ProposedFields {
@@ -51,13 +54,14 @@ interface ProposedFields {
   description: string;
   targetStageId: string;
   level: RequirementLevel;
+  typeId: string;
   reviewDate: string;
   reviewLeadDays: string;
   reviewer: PrincipalRef | null;
 }
 
 const BLANK_PROPOSED: ProposedFields = {
-  name: "", reasoning: "", clarification: "", description: "", targetStageId: "", level: "requirement",
+  name: "", reasoning: "", clarification: "", description: "", targetStageId: "", level: "requirement", typeId: "",
   reviewDate: "", reviewLeadDays: "", reviewer: null,
 };
 
@@ -87,6 +91,7 @@ export function ChangeRequestCreateModal({
   const [components, setComponents] = useState<Component[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [stages, setStages] = useState<ProjectStage[]>([]);
+  const [requirementTypes, setRequirementTypes] = useState<EffectiveTypeRow[]>([]);
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [organizationId, setOrganizationId] = useState<string | undefined>(undefined);
@@ -113,13 +118,14 @@ export function ChangeRequestCreateModal({
   useEffect(() => {
     let live = true;
     (async () => {
-      const [reqs, comps, cats, defs, stgs, proj] = await Promise.all([
+      const [reqs, comps, cats, defs, stgs, proj, types] = await Promise.all([
         api.get<Requirement[]>(`/api/v1/projects/${projectId}/requirements`),
         api.get<Component[]>(`/api/v1/projects/${projectId}/components`),
         api.get<Category[]>(`/api/v1/projects/${projectId}/categories`),
         api.get<CustomFieldDefinition[]>(`/api/v1/projects/${projectId}/custom-fields?entity_kind=requirement`),
         api.get<ProjectStage[]>(`/api/v1/projects/${projectId}/stages`),
         api.get<Project>(`/api/v1/projects/${projectId}`),
+        listRequirementTypes(projectId),
       ]);
       let users: OrgUser[] = [];
       let resources: FileAsset[] = [];
@@ -137,6 +143,7 @@ export function ChangeRequestCreateModal({
       setCategories(cats);
       setCustomFieldDefs(defs);
       setStages(stgs);
+      setRequirementTypes(types);
       setOrganizationId(proj.organization_id);
       setOrgUsers(users);
       setOrgResources(resources);
@@ -171,6 +178,7 @@ export function ChangeRequestCreateModal({
       description: selectedRequirement.description,
       targetStageId: selectedRequirement.target_stage_id,
       level: selectedRequirement.level,
+      typeId: requirementTypeSelection(requirementTypes, selectedRequirement),
       reviewDate: selectedRequirement.review_date ?? "",
       reviewLeadDays: selectedRequirement.review_lead_days != null ? String(selectedRequirement.review_lead_days) : "",
       reviewer: principalRef(selectedRequirement.reviewer),
@@ -215,6 +223,7 @@ export function ChangeRequestCreateModal({
           proposed_description: changedFields.has("description") ? proposed.description : null,
           proposed_target_stage_id: changedFields.has("target_stage_id") ? proposed.targetStageId : null,
           proposed_level: changedFields.has("level") ? proposed.level : null,
+          proposed_type_id: changedFields.has("type_id") ? proposed.typeId || null : null,
           proposed_review_date: changedFields.has("review_date") ? proposed.reviewDate || null : null,
           proposed_review_lead_days:
             changedFields.has("review_lead_days") && proposed.reviewLeadDays ? Number(proposed.reviewLeadDays) : null,
@@ -235,6 +244,7 @@ export function ChangeRequestCreateModal({
           proposed_category_id: categoryId,
           proposed_target_stage_id: proposed.targetStageId || null,
           proposed_level: proposed.level,
+          proposed_type_id: proposed.typeId || null,
           proposed_review_date: proposed.reviewDate || null,
           proposed_review_lead_days: proposed.reviewLeadDays ? Number(proposed.reviewLeadDays) : null,
           proposed_reviewer: proposed.reviewer,
@@ -301,6 +311,16 @@ export function ChangeRequestCreateModal({
             placeholder={null}
             onChange={(level) => setProposed((p) => ({ ...p, level }))}
             options={labelOptions(REQUIREMENT_LEVEL_LABEL)}
+          />
+        );
+      case "type_id":
+        return (
+          <InlineSelect
+            ariaLabel={CHANGEABLE_FIELD_LABEL.type_id}
+            value={proposed.typeId}
+            placeholder={strings.requirements.noType}
+            onChange={(typeId) => setProposed((p) => ({ ...p, typeId }))}
+            options={requirementTypeOptions(requirementTypes, selectedRequirement ?? undefined)}
           />
         );
       case "review_date":
@@ -461,6 +481,13 @@ export function ChangeRequestCreateModal({
               { value: "optional", label: REQUIREMENT_LEVEL_LABEL.optional },
             ]}
             placeholder={null}
+          />
+          <LabeledSelect help={strings.help.requirementType}
+            label={strings.requirements.type}
+            value={proposed.typeId}
+            onChange={(next) => setProposed((p) => ({ ...p, typeId: next }))}
+            options={requirementTypeOptions(requirementTypes)}
+            placeholder={strings.requirements.noType}
           />
           <FormGridFull>
             <CustomFieldsForm

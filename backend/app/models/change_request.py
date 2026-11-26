@@ -125,6 +125,11 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
         UUID(as_uuid=True), ForeignKey("project_stages.id", ondelete="SET NULL"), nullable=True
     )
     proposed_level: Mapped[RequirementLevel | None] = mapped_column(str_enum(RequirementLevel, 20), nullable=True)
+    # The type a change request proposes (a `ProjectRequirementType` row); clearing it names `project_type_id` in
+    # `changed_fields` with this column null.
+    proposed_project_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_requirement_types.id", ondelete="SET NULL"), nullable=True
+    )
     # Mirrors RequirementVersion's review-scheduling fields (C-R-06/08/10); once a requirement is approved,
     # review_date changes only through this path.
     proposed_review_date: Mapped[date | None] = mapped_column(Date, nullable=True)

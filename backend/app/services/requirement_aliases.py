@@ -619,7 +619,7 @@ def make_independent(
         name=version.name, reasoning=version.reasoning, clarification=version.clarification,
         description=version.description, owner=PrincipalRef(type=PrincipalType.USER, id=actor.id), keywords=keywords,
         sort_order=count, target_stage_id=version.target_stage_id, level=version.level,
-        custom_fields=dict(version.custom_fields), review_date=version.review_date,
+        project_type_id=version.project_type_id, custom_fields=dict(version.custom_fields), review_date=version.review_date,
         review_lead_days=version.review_lead_days, unique_code=alias_code,
         change_note=f"Made independent from {original_code}; content authored by {author.display_name if author else 'a former user'}.",
     )

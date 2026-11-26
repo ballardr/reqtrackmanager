@@ -1819,6 +1819,9 @@ export interface Requirement extends ProjectScopedRow {
   category_id: string;
   target_stage_id: string;
   level: RequirementLevel;
+  /** The requirement's type: an entry of the project's requirement type list, or null when untyped. */
+  type_id: string | null;
+  type_name: string | null;
   sort_order: number;
   creator_id: string;
   is_archived: boolean;
@@ -1882,6 +1885,7 @@ export interface RequirementVersionEntry {
   owner: Principal;
   target_stage_id: string;
   level: RequirementLevel;
+  type_name: string | null;
   change_note: string;
   change_request_id: string | null;
   created_by: string;
@@ -1969,6 +1973,7 @@ export const CHANGEABLE_REQUIREMENT_FIELDS = [
   "description",
   "target_stage_id",
   "level",
+  "type_id",
   "review_date",
   "review_lead_days",
   "reviewer_id",
@@ -1984,6 +1989,7 @@ export const CHANGEABLE_FIELD_LABEL: Record<ChangeableRequirementField, string> 
   description: "Description",
   target_stage_id: "Target version",
   level: "Level",
+  type_id: "Type",
   review_date: "Review date",
   review_lead_days: "Reminder lead time",
   reviewer_id: "Assigned reviewer",
@@ -2005,6 +2011,8 @@ export interface ChangeRequest extends ProjectScopedRow {
   proposed_description: string | null;
   proposed_target_stage_id: string | null;
   proposed_level: RequirementLevel | null;
+  proposed_type_id: string | null;
+  proposed_type_name: string | null;
   reason: string;
   custom_fields: Record<string, unknown>;
   submitted_at: string | null;

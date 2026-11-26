@@ -32,13 +32,13 @@ from app.schemas.project_scope import ProjectScopedRow
 #: renaming it would break every stored `changed_fields` list.
 CHANGEABLE_REQUIREMENT_FIELDS = frozenset({
     "name", "reasoning", "clarification", "description", "target_stage_id", "level",
-    "review_date", "review_lead_days", "reviewer_id", "custom_fields", "attachments",
+    "review_date", "review_lead_days", "reviewer_id", "type_id", "custom_fields", "attachments",
 })
 
 #: Maps a changed_fields entry to the ChangeRequestCreate attribute that must be non-None when that field is
 #: listed, only for fields where the requirement can never hold a null (so None means "not proposing a
-#: change"). review_date/review_lead_days/reviewer_id/custom_fields/attachments are excluded: they support a
-#: null or empty proposed value (e.g. clearing the reviewer), so changed_fields membership alone signals them.
+#: change"). review_date/review_lead_days/reviewer_id/type_id/custom_fields/attachments are excluded: they support a
+#: null or empty proposed value (e.g. clearing the reviewer or the type), so changed_fields membership alone signals them.
 FIELDS_REQUIRING_A_VALUE_WHEN_CHANGED = {
     "name": "proposed_name",
     "reasoning": "proposed_reasoning",
@@ -120,6 +120,8 @@ class ChangeRequestCreate(BaseModel):
     proposed_category_id: UUID | None = None
     proposed_target_stage_id: UUID | None = None
     proposed_level: RequirementLevel | None = None
+    # An entry of the project's requirement type list; `type_id` in `changed_fields` with this null clears the type.
+    proposed_type_id: UUID | None = None
     proposed_attachment_file_ids: list[UUID] = []
     reason: str
     custom_fields: dict[str, Any] = {}
@@ -158,6 +160,8 @@ class ChangeRequestOut(ProjectScopedRow):
     proposed_description: str | None = None
     proposed_target_stage_id: UUID | None = None
     proposed_level: RequirementLevel | None = None
+    proposed_type_id: UUID | None = None
+    proposed_type_name: str | None = None
     proposed_attachment_file_ids: list[UUID] = []
     reason: str
     custom_fields: dict[str, Any]

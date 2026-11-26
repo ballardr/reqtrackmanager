@@ -31,6 +31,7 @@ Twenty-two read tools, always available:
 | `search_artefact_link_candidates` | Finds the record to link to (the `other_id` for `create_artefact_link`): a short search across every record type a usable link type reaches (two characters or more), or within one type, optionally narrowed by browse choices |
 | `list_artefact_link_browse` | The next browse level of a record type (a compliance clause: standard, then version, then requirement; a requirement: component, then category; most types: a status or type), to narrow the search step by step |
 | `list_components` / `list_categories` / `list_stages` | The project's components, categories (optionally one component's) and stages in display order, with the ids that `create_requirement` and `list_requirements` take; an empty `list_components` means the project has no structure yet |
+| `list_requirement_types` | The requirement types a project offers, with each type's `id` (what `create_requirement` and `update_requirement` take as `type_id`), name, order and whether it can be chosen |
 | `list_tags` | The project's tag vocabulary with usage counts, and whether new tags are free or limited to the list |
 | `get_artefact_tags` | The tags on one record of any type, whether the caller may change them, and the tags to choose from |
 | `find_artefacts_by_tag` | Records of every type that carry some tags (any or all), limited to those the caller can open |

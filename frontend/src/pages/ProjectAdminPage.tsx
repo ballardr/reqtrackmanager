@@ -45,6 +45,7 @@ import { StageWorkflowsPanel } from "../components/StageWorkflowsPanel";
 import { ComponentPhasesPanel } from "../components/ComponentPhasesPanel";
 import { NavLabelsPanel } from "../components/NavLabelsPanel";
 import { ProjectExternalSystemsPanel } from "../components/ExternalSystemsPanels";
+import { ProjectRequirementTypesPanel } from "../components/RequirementTypesPanels";
 import { RecordCodePrefixPanel } from "../components/RecordCodePrefixPanel";
 import { StructurePanel } from "../components/StructurePanel";
 import { ProjectLifecyclesPanel } from "../components/ProjectLifecyclesPanel";
@@ -1611,6 +1612,12 @@ export function ProjectAdminPage() {
         {project && (
           <CollapsibleSection sectionKey="projectAdmin.fieldsActions.linkTypes" title={strings.orgAdmin.linkTypes} defaultCollapsed={false}>
             <LinkTypesPanel scope={{ kind: "project", orgId: project.organization_id, projectId: project.id }} />
+          </CollapsibleSection>
+        )}
+
+        {projectId && (
+          <CollapsibleSection sectionKey="projectAdmin.fieldsActions.requirementTypes" title={strings.requirementTypes.heading} help={strings.requirementTypes.projectHelp} defaultCollapsed={false}>
+            <ProjectRequirementTypesPanel projectId={projectId} />
           </CollapsibleSection>
         )}
 

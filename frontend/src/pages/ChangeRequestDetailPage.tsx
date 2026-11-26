@@ -209,6 +209,8 @@ export function ChangeRequestDetailPage() {
         return targetLabel();
       case "level":
         return levelLabel();
+      case "type_id":
+        return cr.proposed_type_name ?? strings.requirements.noType;
       case "review_date":
         return cr.proposed_review_date ?? strings.requirements.reviewNone;
       case "review_lead_days":

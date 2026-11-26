@@ -7,6 +7,7 @@ import type { Category, Component, ProjectStage } from "../api/types";
 import {
   buildFileAsset, buildProjectListItem, buildRequirement, buildStageWorkflow, buildUser,
   withRouter, withStatefulAuth, withTerminology, withToast,
+  buildRequirementTypes,
 } from "../testing/storybook-helpers";
 import { buildCandidate, buildOption } from "../testing/artefactLinksFixtures";
 import { buildRecordColumns } from "../testing/recordTablesFixtures";
@@ -56,6 +57,7 @@ function mockRequirementsListApis(
     if (path.includes("/components")) return comps;
     if (path.includes("/categories")) return cats;
     if (path.endsWith("/stage-workflows")) return [buildStageWorkflow()];
+    if (path.endsWith("/requirement-types")) return buildRequirementTypes();
     if (path.includes("/stages")) return stages;
     if (path.includes("custom-fields")) return [];
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1", name: "Atlas Platform" };
@@ -844,5 +846,40 @@ export const ShowsAndFiltersByGoverningPhase: Story = {
     await expect(within(select).getByRole("option", { name: "Review" })).toBeInTheDocument();
     await userEvent.selectOptions(select, "Review");
     await waitFor(() => expect(api.getPage).toHaveBeenCalledWith(expect.stringContaining("phase=Review")));
+  },
+};
+
+/** The Type filter lists the project's types by name and sends the chosen name; the column shows each row's type. */
+export const FiltersAndShowsTheRequirementType: Story = {
+  beforeEach: () => mockRequirementsListApis("manager"),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const select = await canvas.findByRole("combobox", { name: "Type" });
+    await expect(within(select).getByRole("option", { name: "Business Requirement" })).toBeInTheDocument();
+    await expect(within(select).getByRole("option", { name: "All types" })).toBeInTheDocument();
+    await userEvent.selectOptions(select, "Business Requirement");
+    await waitFor(() => expect(api.getPage).toHaveBeenCalledWith(expect.stringContaining("type=Business+Requirement")));
+  },
+};
+
+/** A new requirement can be given a type; the create request carries the chosen entry's id. */
+export const CreateRequirementSendsTheChosenType: Story = {
+  beforeEach: () => {
+    mockRequirementsListApis("manager");
+    spyOn(api, "post").mockResolvedValue(buildRequirement({ id: "r-new", unique_code: "AUTH-LOG-099", name: "Typed" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "New requirement" }));
+    const panel = within(document.body).getByRole("dialog", { name: "New requirement" });
+    await waitFor(() => expect(within(panel).getByPlaceholderText("Name")).toBeInTheDocument());
+    await userEvent.type(within(panel).getByPlaceholderText("Name"), "Typed");
+    await userEvent.selectOptions(within(panel).getByRole("combobox", { name: "Type" }), "Stakeholder Requirement");
+    await userEvent.click(within(panel).getByRole("button", { name: "Create" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/requirements`, expect.objectContaining({ type_id: "requirement-type-2" }),
+      )
+    );
   },
 };

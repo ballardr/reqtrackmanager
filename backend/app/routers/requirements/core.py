@@ -60,6 +60,7 @@ from app.services.principals import label_of, validate_principal
 from app.services.project_scope import ProjectScope
 from app.services.rbac import get_effective_project_roles, require_project_view
 from app.services.requirement_aliases import active_aliases
+from app.services.requirement_types import type_names as requirement_type_names
 from app.services.requirements import (
     CAN_EDIT_ROLES,
     OPEN_CR_STATUSES,
@@ -142,6 +143,7 @@ def _to_out(
         subscribed = requirement.id in prefetch.subscribed
         comment_count = prefetch.comment_counts.get(requirement.id, 0)
         open_cr = requirement.id in prefetch.open_change_request
+        type_names = prefetch.type_names
     else:
         people = version_people(db, [version])
         keywords = get_keywords(db, requirement.id)
@@ -149,12 +151,14 @@ def _to_out(
         subscribed = engagement.is_subscribed(db, current_user_id, "requirement", requirement.id)
         comment_count = engagement.get_comment_count(db, ReviewTargetType.REQUIREMENT, requirement.id)
         open_cr = _has_open_change_request(db, requirement.id)
+        type_names = requirement_type_names(db, [version.project_type_id])
     return RequirementOut(
         id=requirement.id, project_id=requirement.project_id, unique_code=requirement.unique_code,
         name=version.name, reasoning=version.reasoning, clarification=version.clarification,
         description=version.description,
         status=version.status, owner=people[(version.owner_type, version.owner_id)], component_id=requirement.component_id,
         category_id=requirement.category_id, target_stage_id=version.target_stage_id, level=version.level,
+        type_id=version.project_type_id, type_name=type_names.get(version.project_type_id) if version.project_type_id else None,
         sort_order=version.sort_order, creator_id=requirement.creator_id,
         is_archived=requirement.is_archived, is_locked=is_locked(version),
         is_completed=requirement.is_completed, completed_at=requirement.completed_at,
@@ -231,7 +235,7 @@ def create_requirement_endpoint(
         name=payload.name, reasoning=payload.reasoning, clarification=payload.clarification,
         description=payload.description,
         owner=payload.owner, keywords=payload.keywords, sort_order=count,
-        target_stage_id=target_stage_id, level=payload.level,
+        target_stage_id=target_stage_id, level=payload.level, type_id=payload.type_id,
         custom_fields=custom_fields, creator_override_id=creator_override_id,
         review_date=payload.review_date, review_lead_days=payload.review_lead_days, reviewer=payload.reviewer,
     )
@@ -263,6 +267,7 @@ def list_requirements(
     tag_mode: Literal["any", "all"] = Query("any", description="Whether a requirement needs any or all of the `tag`s."),
     external_system: list[str] = Query([], description="Only requirements with an external reference in these systems (by name)."),
     external_key: str | None = Query(None, description="Only requirements with an external reference whose key contains this text."),
+    type_name: list[str] = Query([], alias="type", description="Only requirements of these requirement types (by name)."),
     search: str | None = None,
     status_filter: RequirementStatus | None = Query(None, alias="status"),
     is_completed: bool | None = None,
@@ -274,7 +279,7 @@ def list_requirements(
     phase: str | None = Query(None, description="Only requirements whose governing phase (their component's track, else the stage's) has this name."),
     include_archived: bool = False,
     sort: str | None = Query(
-        None, pattern="^(unique_code|code|name|title|status|created_at|created|updated_at|modified|target|placement|references)$",
+        None, pattern="^(unique_code|code|name|title|status|created_at|created|updated_at|modified|target|placement|type|references)$",
     ),
     order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
@@ -298,8 +303,9 @@ def list_requirements(
 
     `sort` overrides the default component/category/manual-order sort with a single-column sort by
     `unique_code` (`code`), `name` (`title`), `status`, `created_at` (`created`), `updated_at` (`modified`),
-    `target` (the target stage's position, then the level), `placement` (the component's then the category's name)
-    or `references` (the first external reference's system and key); `order` picks `asc` (default) or `desc`.
+    `target` (the target stage's position, then the level), `placement` (the component's then the category's name),
+    `type` (the requirement type's rank, then its place in the list; untyped last) or `references`
+    (the first external reference's system and key); `order` picks `asc` (default) or `desc`.
     A code orders by its prefix and then its number (`REQ-2` before `REQ-10`). Without `sort` the default ordering applies.
 
     `X-Total-Unfiltered-Count` is the count within only the mandatory project + default archived-visibility
@@ -318,6 +324,7 @@ def list_requirements(
         include_archived=include_archived, is_completed=is_completed, component_ids=tuple(component_id), category_ids=tuple(category_id),
         tag_names=tuple(tag), tag_match_all=tag_mode == "all", keyword=keyword,
         external_systems=tuple(s.strip() for s in external_system if s.strip()), external_key=external_key, search=search, status=status_filter,
+        type_names=tuple(t.strip() for t in type_name if t.strip()),
         target_stage_id=target_stage_id, target_stage_from_id=target_stage_from_id, target_stage_to_id=target_stage_to_id,
         has_comments=has_comments, only_watched=only_watched, phase=phase,
     )
@@ -423,6 +430,7 @@ def update_requirement(
         reviewer=payload.reviewer, reviewer_explicitly_set=True,
         component_id=payload.component_id, category_id=payload.category_id,
         keywords=payload.keywords,
+        type_id=payload.type_id, type_explicitly_set="type_id" in payload.model_fields_set,
         additional_places=(
             None if payload.additional_places is None
             else [PlacementPair(p.component_id, p.category_id) for p in payload.additional_places]
@@ -502,12 +510,14 @@ def requirement_history(
         .order_by(RequirementVersion.version_number)
     ).all()
     people = version_people(db, versions)
+    type_names = requirement_type_names(db, [v.project_type_id for v in versions])
     return [
         RequirementVersionOut(
             version_number=v.version_number, name=v.name, reasoning=v.reasoning,
             clarification=v.clarification, description=v.description, status=v.status,
             owner=people[(v.owner_type, v.owner_id)],
             target_stage_id=v.target_stage_id, level=v.level,
+            type_name=type_names.get(v.project_type_id) if v.project_type_id else None,
             change_note=v.change_note, change_request_id=v.change_request_id,
             custom_fields=v.custom_fields,
             created_by=v.created_by, created_at=v.created_at, valid_to=v.valid_to,

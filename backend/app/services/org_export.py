@@ -96,6 +96,7 @@ from app.services.report_pack_bundle import export_org_packs, import_org_packs
 from app.services.report_placement_bundle import export_org_placements, import_org_placements
 from app.services.report_snippet_bundle import export_org_snippets, import_org_snippets
 from app.services.requirement_aliases import MODES as ALIAS_MODES
+from app.services.requirement_types import REQUIREMENT_TYPES
 from app.services.scoring import seed_missing_scoring_levels
 from app.services.stage_workflow_bundle import export_org_stage_workflows, import_org_stage_workflows
 from app.services.vocabulary_bundle import export_org_list, import_org_list
@@ -169,6 +170,7 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
         # Configuration only: never a token, a hash or an address (`services.service_users.export_org`).
         "service_users": service_users.export_org(db, org),
         "external_systems": export_org_list(db, org, EXTERNAL_SYSTEMS),
+        "requirement_types": export_org_list(db, org, REQUIREMENT_TYPES),
     }
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         module_bundle_json.update(hooks.export(db, org))
@@ -705,6 +707,7 @@ def import_org_bundle(
     org_policies.import_org(db, org.id, data, acting_user, warnings)
     code_prefixes.import_overrides(db, org, data.get("code_prefixes"), acting_user.id, warnings.add)
     import_org_list(db, org, EXTERNAL_SYSTEMS, data.get("external_systems") or [])
+    import_org_list(db, org, REQUIREMENT_TYPES, data.get("requirement_types") or [])
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         if hooks.import_files is not None:
             hooks.import_files(db, org, data, file_bytes_by_ref, acting_user, warnings)
@@ -870,6 +873,7 @@ def merge_org_bundle(
     )
     _warn_legacy_report_content(data, warnings)
     import_org_list(db, target_org, EXTERNAL_SYSTEMS, data.get("external_systems") or [])
+    import_org_list(db, target_org, REQUIREMENT_TYPES, data.get("requirement_types") or [])
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         if hooks.import_files is not None:
             hooks.import_files(db, target_org, data, file_bytes_by_ref, acting_user, warnings)

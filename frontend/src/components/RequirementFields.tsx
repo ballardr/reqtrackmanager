@@ -3,7 +3,7 @@
  *
  * The field group shared by the requirement create dialog (`RequirementsPage`) and the edit form
  * (`RequirementDetailPage`), so a field added to a requirement appears in both: name, reasoning, clarification,
- * description, target version, level, review date, reminder lead time, reviewer and owner.
+ * description, target version, level, type, review date, reminder lead time, reviewer and owner.
  *
  * Fields that differ stay with the page: the create dialog places component and category (chosen once, at creation)
  * through `afterDescription`; custom fields, tags, links and the change note follow the group.
@@ -18,7 +18,8 @@ import { DateField, TextAreaField, TextField } from "./FormFields";
 import { FormGridFull } from "./FormGrid";
 import { LabeledSelect } from "./LabeledSelect";
 import { PrincipalFormField } from "./PrincipalFormField";
-import type { RequirementFieldValues } from "./requirementFieldValues";
+import { requirementTypeOptions, type RequirementFieldValues } from "./requirementFieldValues";
+import type { EffectiveTypeRow } from "./TypeVocabularyPanels";
 
 const LEVELS: RequirementLevel[] = ["requirement", "recommended", "optional"];
 
@@ -26,6 +27,8 @@ const LEVELS: RequirementLevel[] = ["requirement", "recommended", "optional"];
  * @param values Current field values.
  * @param onChange Called with the whole next value set after any field changes.
  * @param stages The project's target versions.
+ * @param requirementTypes The project's requirement types; the type field is shown when the list is given.
+ * @param currentType The requirement's own type when editing, kept as a choice even if it is no longer offered.
  * @param orgUsers Organisation members, for the owner and reviewer pickers.
  * @param organizationId The project's organisation (enables server-side user and group search).
  * @param projectId The project (enables project groups).
@@ -35,11 +38,14 @@ const LEVELS: RequirementLevel[] = ["requirement", "recommended", "optional"];
  * @param afterDescription Page-specific fields placed between description and target version.
  */
 export function RequirementFields({
-  values, onChange, stages, orgUsers, organizationId, projectId, saved, ownerPlaceholder, afterDescription, ownerRequired,
+  values, onChange, stages, requirementTypes, currentType, orgUsers, organizationId, projectId, saved, ownerPlaceholder,
+  afterDescription, ownerRequired,
 }: {
   values: RequirementFieldValues;
   onChange: (next: RequirementFieldValues) => void;
   stages: ProjectStage[];
+  requirementTypes?: EffectiveTypeRow[];
+  currentType?: { id: string | null; name: string | null };
   orgUsers: OrgUser[];
   organizationId?: string;
   projectId?: string;
@@ -81,6 +87,15 @@ export function RequirementFields({
         options={LEVELS.map((value) => ({ value, label: REQUIREMENT_LEVEL_LABEL[value] }))}
         placeholder={null}
       />
+      {requirementTypes && (
+        <LabeledSelect help={strings.help.requirementType}
+          label={strings.requirements.type}
+          value={values.typeId}
+          onChange={(next) => set("typeId", next)}
+          options={requirementTypeOptions(requirementTypes, currentType)}
+          placeholder={strings.requirements.noType}
+        />
+      )}
       <DateField help={strings.help.requirementReviewDate} label={strings.requirements.reviewDate} value={values.reviewDate} onChange={(next) => set("reviewDate", next)} />
       <TextField help={strings.help.requirementReminderLead}
         label={strings.requirements.reviewLeadDays} value={values.reviewLeadDays}

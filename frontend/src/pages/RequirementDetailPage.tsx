@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
+import { listRequirementTypes } from "../api/requirementTypes";
 import type {
   ActionTypeDefinition,
   Comment,
@@ -38,7 +39,8 @@ import { RequirementPlaces } from "../components/RequirementPlaces";
 import { PrincipalBadge } from "../components/PrincipalBadge";
 import { useWatchingTab } from "../hooks/useWatchingTab";
 import { RequirementFields } from "../components/RequirementFields";
-import { EMPTY_REQUIREMENT_FIELDS, type RequirementFieldValues } from "../components/requirementFieldValues";
+import { EMPTY_REQUIREMENT_FIELDS, requirementTypeSelection, type RequirementFieldValues } from "../components/requirementFieldValues";
+import type { EffectiveTypeRow } from "../components/TypeVocabularyPanels";
 import { CommentThread } from "../components/CommentThread";
 import { CommentConfirmDialog } from "../components/CommentConfirmDialog";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -118,6 +120,7 @@ export function RequirementDetailPage() {
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>([]);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [stages, setStages] = useState<ProjectStage[]>([]);
+  const [requirementTypes, setRequirementTypes] = useState<EffectiveTypeRow[]>([]);
   const [reviewOutcome, setReviewOutcome] = useState<RequirementReviewOutcome>("met");
   const [reviewComment, setReviewComment] = useState("");
   const [reviewError, setReviewError] = useState<string | null>(null);
@@ -191,7 +194,7 @@ export function RequirementDetailPage() {
 
   async function reload() {
     if (!projectId || !requirementId) return;
-    const [req, hist, comm, fls, defs, stgs, actTypes, linkedActs, allActs] = await Promise.all([
+    const [req, hist, comm, fls, defs, stgs, actTypes, linkedActs, allActs, types] = await Promise.all([
       api.get<Requirement>(`/api/v1/projects/${projectId}/requirements/${requirementId}`),
       api.get<RequirementVersionEntry[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/history`),
       api.get<Comment[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/comments`),
@@ -201,7 +204,9 @@ export function RequirementDetailPage() {
       api.get<ActionTypeDefinition[]>(`/api/v1/projects/${projectId}/action-types`),
       api.get<RequirementAction[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/actions`),
       api.get<RequirementAction[]>(`/api/v1/projects/${projectId}/actions`),
+      listRequirementTypes(projectId),
     ]);
+    setRequirementTypes(types);
     setRequirement(req);
     setHistory(hist);
     setComments(comm);
@@ -224,6 +229,7 @@ export function RequirementDetailPage() {
         changeNote: "",
         targetStageId: req.target_stage_id,
         level: req.level,
+        typeId: requirementTypeSelection(types, req),
         reviewDate: req.review_date ?? "",
         reviewLeadDays: req.review_lead_days != null ? String(req.review_lead_days) : "",
         owner: principalRef(req.owner),
@@ -421,6 +427,8 @@ export function RequirementDetailPage() {
         owner: form.owner,
         target_stage_id: form.targetStageId,
         level: form.level,
+        // Sent only when changed: an unrelated edit leaves the type as it is (it may no longer be on the list).
+        ...(form.typeId !== requirementTypeSelection(requirementTypes, requirement) ? { type_id: form.typeId || null } : {}),
         custom_fields: customFieldValues,
         change_note: form.changeNote,
         review_date: form.reviewDate || null,
@@ -676,6 +684,7 @@ export function RequirementDetailPage() {
             {requirement.is_completed && <Badge>{strings.requirements.completedBadge}</Badge>}
             <Badge>Target: {stageName(requirement.target_stage_id)}</Badge>
             <Badge>Level: {REQUIREMENT_LEVEL_LABEL[requirement.level]}</Badge>
+            {requirement.type_name && <Badge>{strings.requirements.type}: {requirement.type_name}</Badge>}
             {requirement.review_date && <Badge>{strings.requirements.reviewDate}: {requirement.review_date}</Badge>}
             <Badge>
               {strings.requirements.owner}: <PrincipalBadge principal={requirement.owner} />
@@ -690,6 +699,8 @@ export function RequirementDetailPage() {
               values={form}
               onChange={(next) => updateForm((f) => ({ ...f, ...next }))}
               stages={stages}
+              requirementTypes={requirementTypes}
+              currentType={{ id: requirement.type_id, name: requirement.type_name }}
               orgUsers={orgUsers}
               organizationId={organizationId ?? undefined}
               projectId={projectId}

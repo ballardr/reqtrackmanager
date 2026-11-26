@@ -2307,7 +2307,7 @@ Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query
 
 ## Traceability & Governance (`traceability`)
 
-Governance: lifecycle, approval, review and baseline policy per record type, set by the organisation as profiles that can be enforced, defaulted or opted into, with a health view. Traceability: requirement types and rules for which links a record must carry, with status, exceptions, cross-project reach and matrices.
+Governance: lifecycle, approval, review and baseline policy per record type, set by the organisation as profiles that can be enforced, defaulted or opted into, with a health view. Traceability: rules for which links a record must carry, with status, exceptions, cross-project reach and matrices.
 
 ### How to use these tools
 

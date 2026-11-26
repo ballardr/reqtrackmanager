@@ -578,6 +578,7 @@ async def list_requirements(
     tag_mode: str = "any",
     external_systems: list[str] | None = None,
     external_key: str | None = None,
+    requirement_types: list[str] | None = None,
 ) -> list[dict]:
     """Lists requirements in a project, with the same filters the Requirements page's filter panel offers.
 
@@ -600,10 +601,12 @@ async def list_requirements(
             requirements with an external reference in one of them are listed.
         external_key: Optional text; only requirements with an external reference whose key contains it are
             listed (to find the record for one known key use `find_artefacts_by_external_reference`).
+        requirement_types: Optional requirement type names (see `list_requirement_types`; case-insensitive); only
+            requirements of one of them are listed.
 
     Returns:
         A list of requirements, each including `id`, `unique_code`, `name`,
-        `reasoning`, `status`, `is_locked`, and more — use a result's `id`
+        `reasoning`, `status`, `is_locked`, `type_id` and `type_name`, and more — use a result's `id`
         with `get_requirement` for the full record, or `get_requirement_history`
         for its change log.
     """
@@ -618,6 +621,7 @@ async def list_requirements(
             "component_id": comp, "category_id": cat, "include_archived": include_archived,
             "tag": tags or None, "tag_mode": tag_mode,
             "external_system": external_systems or None, "external_key": external_key or None,
+            "type": requirement_types or None,
         },
     )
     return response.json()
@@ -1055,6 +1059,27 @@ async def list_external_systems(project_id: str | None = None) -> list[dict]:
     """
     pid = _require_project_id(project_id)
     response = await _call_backend("GET", f"/api/v1/projects/{pid}/external-systems")
+    return response.json()
+
+
+@mcp.tool
+async def list_requirement_types(project_id: str | None = None) -> list[dict]:
+    """Lists the requirement types a project offers (Business, Stakeholder and Project Requirement by default).
+
+    The list is the organisation's types with the project's own changes (a type it renamed, reordered, disabled,
+    added or hid). The order is for display; `rank` is each type's priority (1 is the highest, equal ranks are peers, null is
+    unranked). Which type must trace to which is a traceability rule.
+
+    Args:
+        project_id: The project's UUID (from `list_projects`).
+
+    Returns:
+        The types in order, each with `id` (what `create_requirement` and `update_requirement` take as `type_id`),
+        `name`, `display_order`, `rank`, `is_enabled` (a disabled type cannot be chosen) and `source` ("org",
+        "project_override" or "project_local").
+    """
+    pid = _require_project_id(project_id)
+    response = await _call_backend("GET", f"/api/v1/projects/{pid}/requirement-types")
     return response.json()
 
 
@@ -1946,6 +1971,7 @@ if MCP_WRITES_ENABLED:
         review_lead_days: int | None = None,
         reviewer: dict | None = None,
         additional_places: list[dict] | None = None,
+        type_id: str | None = None,
     ) -> dict:
         """Creates a new requirement. Always starts in "draft" status —
         there is no way to create one pre-approved, and no tool here can
@@ -1983,6 +2009,8 @@ if MCP_WRITES_ENABLED:
                 `[{"component_id": uuid, "category_id": uuid}]` (a requirement concerning several components, such as an
                 interface). Each gets an alias code of its own (`aliases` in the result) and names the same requirement.
                 Refused (409) when the project's alias setting is Disabled.
+            type_id: Optional requirement type (an `id` from `list_requirement_types`); the requirement is untyped
+                when omitted.
 
         Returns:
             The newly created requirement's full detail, same shape as `get_requirement`.
@@ -2004,6 +2032,7 @@ if MCP_WRITES_ENABLED:
             "review_lead_days": review_lead_days,
             "reviewer": _require_principal(reviewer, "reviewer"),
             "additional_places": _require_places(additional_places, "additional_places") or [],
+            "type_id": _require_uuid(type_id, "type_id") if type_id else None,
         }
         response = await _call_backend("POST", f"/api/v1/projects/{pid}/requirements", json=body)
         return response.json()
@@ -2028,6 +2057,7 @@ if MCP_WRITES_ENABLED:
         review_lead_days: int | None = None,
         reviewer: dict | None = None,
         additional_places: list[dict] | None = None,
+        type_id: str | None = None,
         change_note: str = "",
     ) -> dict:
         """Edits an unlocked requirement's content in place.
@@ -2069,6 +2099,8 @@ if MCP_WRITES_ENABLED:
                 (`[{"component_id": uuid, "category_id": uuid}]`, each with an alias code); a place left out is
                 retired (its code still resolves); omit to leave them as they are. Refused (409) when a new place is
                 wanted and the project's alias setting is Disabled.
+            type_id: Sets the requirement's type (an `id` from `list_requirement_types`); omit to leave it unchanged
+                (clearing a type is done in the ReqTrackManager UI).
             change_note: Optional note explaining why this edit was made,
                 recorded in the requirement's version history (C-A-09).
 
@@ -2104,6 +2136,9 @@ if MCP_WRITES_ENABLED:
         if additional_places is not None:
             # Omitted leaves the further places alone; a stale copy sent back would retire places added since the read.
             body["additional_places"] = _require_places(additional_places, "additional_places")
+        if type_id:
+            # Omitted leaves the type as it is, so only a chosen type is sent.
+            body["type_id"] = _require_uuid(type_id, "type_id")
         response = await _call_backend("PUT", f"/api/v1/projects/{pid}/requirements/{rid}", json=body)
         return response.json()
 

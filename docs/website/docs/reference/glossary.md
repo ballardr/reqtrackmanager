@@ -338,6 +338,10 @@ The short name of a record, such as `REQ-001` (requirement), `PP-001` (pain poin
 
 The letters new records of a type are numbered with, such as `ADR` in `ADR-006`. An organisation or a project can choose it for each record type; records already issued keep their codes. See [Record code prefixes](../workflows/administering-an-organisation.md#record-code-prefixes).
 
+#### Requirement type
+
+The kind a requirement is, chosen from a list an organisation defines and a project can adjust: Business, Stakeholder and Project Requirement by default. The type is part of a requirement's content, so changing it once the requirement is approved goes through a change request. Each type has a rank (its priority, 1 the highest) that orders lists and reports; the order of the list is for display. See [Requirements management → Requirement types](../core-features/requirements-management.md#requirement-types).
+
 #### Requirement version
 
 One historical or current state of a requirement's content (name, reasoning, description, status, custom field values). Editing a requirement never overwrites a version — it closes the current one and opens a new one. See [Requirements, versions, and the lifecycle](../concepts/requirements-versions-and-lifecycle.md).

@@ -135,7 +135,7 @@ CORE_METADATA_TYPES: dict[str, str] = {
         "scoring_model", "scoring_level", "scoring_axis", "scoring_threshold_set", "scoring_model_default",
         "scoring_enabled_models", "scoring_cell_rating_set", "scoring_band_set", "report_layout", "report_pack",
         "report_pack_set", "report_snippet", "report_folder", "report_placement", "report_run", "generated_report",
-        "request_channel", "request_channel_definition", "external_system", "artefact_type_link_rule", "restore",
+        "request_channel", "request_channel_definition", "external_system", "requirement_type", "artefact_type_link_rule", "restore",
         "change_request_task", "change_request_vote", "baseline", "organization_module", "organization_module_subcomponent",
         "organization", "organization_dashboard", "announcement", "policy", "report_font", "server_module_default", "system",
     ), "structure"),

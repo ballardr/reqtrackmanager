@@ -53,7 +53,13 @@ from app.services.principals import principal_columns, principal_out, validate_p
 from app.services.project_scope import ProjectScope
 from app.services.rbac import get_effective_project_roles, require_project_view
 from app.services.relationships import get_link_between as get_artefact_link_between
-from app.services.requirements import get_current_version, is_locked, requires_change_request_for_links
+from app.services.requirement_types import type_names as requirement_type_names
+from app.services.requirements import (
+    get_current_version,
+    is_locked,
+    requires_change_request_for_links,
+    resolve_type_or_422,
+)
 from app.services.sequences import generate_unique_code
 from app.services.tags import TagFilter
 
@@ -109,6 +115,11 @@ def _to_out(
         proposed_name=version.proposed_name, proposed_reasoning=version.proposed_reasoning,
         proposed_clarification=version.proposed_clarification, proposed_description=version.proposed_description,
         proposed_target_stage_id=version.proposed_target_stage_id, proposed_level=version.proposed_level,
+        proposed_type_id=version.proposed_project_type_id,
+        proposed_type_name=(
+            requirement_type_names(db, [version.proposed_project_type_id]).get(version.proposed_project_type_id)
+            if version.proposed_project_type_id else None
+        ),
         proposed_attachment_file_ids=[UUID(file_id) for file_id in version.proposed_attachment_file_ids],
         reason=version.reason,
         custom_fields=version.custom_fields,
@@ -382,6 +393,8 @@ def create_change_request(
     # workflow step, so none are collected here (see docs/decisions.md).
     custom_fields = validate_custom_field_values(db, project_id, CustomFieldEntityKind.REQUIREMENT, payload.custom_fields)
 
+    proposed_project_type_id = resolve_type_or_422(db, project, payload.proposed_type_id)
+
     creator_id = current_user.id
     if payload.creator_id is not None:
         # PM re-attributing authorship at creation time (C-A-12).
@@ -402,6 +415,7 @@ def create_change_request(
         proposed_description=payload.proposed_description,
         proposed_component_id=payload.proposed_component_id, proposed_category_id=payload.proposed_category_id,
         proposed_target_stage_id=payload.proposed_target_stage_id, proposed_level=payload.proposed_level,
+        proposed_project_type_id=proposed_project_type_id,
         proposed_attachment_file_ids=[str(f) for f in payload.proposed_attachment_file_ids],
         changed_fields=payload.changed_fields if payload.kind == ChangeRequestKind.MODIFY_REQUIREMENT else [],
         reason=payload.reason, custom_fields=custom_fields,

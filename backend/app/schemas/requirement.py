@@ -50,6 +50,8 @@ class RequirementCreate(BaseModel):
     # stage (as CSV import does), so an API caller need not look one up.
     target_stage_id: UUID | None = None
     level: RequirementLevel = RequirementLevel.REQUIREMENT
+    # An entry of the project's requirement type list (`GET .../requirement-types`); omitted leaves it untyped.
+    type_id: UUID | None = None
     keywords: list[str] = []
     custom_fields: dict[str, Any] = {}
     creator_id: UUID | None = None  # PM-only override (C-A-11)
@@ -74,6 +76,8 @@ class RequirementUpdate(BaseModel):
     # Omitted means unchanged (the current value carries forward); a target can be retargeted but never cleared.
     target_stage_id: UUID | None = None
     level: RequirementLevel = RequirementLevel.REQUIREMENT
+    # Omitted leaves the type as it is; null clears it; an id of the project's requirement type list sets it.
+    type_id: UUID | None = None
     # Omitted leaves the requirement's tags as they are (a stale copy sent back would remove tags added since);
     # a list replaces them (`services.tags`).
     keywords: list[str] | None = None
@@ -105,6 +109,9 @@ class RequirementOut(ProjectScopedRow):
     phase_name: str | None = None
     phase_kind: StagePhaseKind | None = None
     level: RequirementLevel = RequirementLevel.REQUIREMENT
+    # The requirement's type: the project type row the version stores (an entry of the project's list), and its name.
+    type_id: UUID | None = None
+    type_name: str | None = None
     sort_order: int
     creator_id: UUID
     is_archived: bool
@@ -141,6 +148,7 @@ class RequirementVersionOut(BaseModel):
     owner: PrincipalOut
     target_stage_id: UUID
     level: RequirementLevel = RequirementLevel.REQUIREMENT
+    type_name: str | None = None
     change_note: str
     change_request_id: UUID | None
     custom_fields: dict[str, Any]

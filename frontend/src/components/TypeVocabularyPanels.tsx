@@ -41,6 +41,8 @@ export interface OrgTypeRow {
   definition?: string | null;
   /** A link pattern with one `{key}` (an external system). */
   url_template?: string | null;
+  /** The type's priority (a requirement type): lower is higher, null is unranked. */
+  rank?: number | null;
 }
 
 /** One row of a project's effective type list. */
@@ -54,6 +56,7 @@ export interface EffectiveTypeRow {
   definition?: string | null;
   /** The link pattern in effect here (an external system): the project's own, else the organisation's. */
   url_template?: string | null;
+  rank?: number | null;
 }
 
 /** The org-tier calls a module supplies. `scopeId` is the organisation id. */
@@ -61,7 +64,7 @@ export interface OrgTypeVocabularyApi<T extends OrgTypeRow> {
   list(orgId: string): Promise<T[]>;
   create(orgId: string, name: string, text?: string): Promise<unknown>;
   move(orgId: string, typeId: string, direction: "up" | "down"): Promise<unknown>;
-  update(orgId: string, typeId: string, values: { name?: string; is_active?: boolean; definition?: string; url_template?: string | null }): Promise<unknown>;
+  update(orgId: string, typeId: string, values: { name?: string; is_active?: boolean; definition?: string; url_template?: string | null; rank?: string | null }): Promise<unknown>;
   delete(orgId: string, typeId: string): Promise<unknown>;
 }
 
@@ -74,7 +77,7 @@ export interface ProjectTypeVocabularyApi {
     typeRefId: string,
     values: {
       name?: string | null; display_order?: number | null; is_enabled?: boolean | null; definition?: string | null;
-      url_template?: string | null;
+      url_template?: string | null; rank?: string | null;
     },
   ): Promise<unknown>;
   /** Deletes a project-only type, or hides an organisation default (any org-backed row's id). */
@@ -86,11 +89,17 @@ export interface ProjectTypeVocabularyApi {
 
 /** A second text field a vocabulary's rows carry beside the name: a type's definition, or an external system's link pattern. */
 export interface VocabularyTextField {
-  key: "definition" | "url_template";
+  key: "definition" | "url_template" | "rank";
   label: string;
   placeholder: string;
   ariaLabel: string;
   multiline?: boolean;
+  /** The column's grid track, for a short value such as a rank. */
+  track?: string;
+  /** Shown beside the caption as its `(?)` help. */
+  help?: string;
+  /** `"number"` for a whole-number value such as a rank. */
+  inputType?: "text" | "number";
 }
 
 /** The growing "Definition" field a vocabulary opts into with `withDefinition`. */
@@ -105,16 +114,18 @@ function definitionTextField(noun: string, scope: string): VocabularyTextField {
 }
 
 /** The `DefinitionList` column for a `VocabularyTextField`. */
-function textFieldColumn<T extends { definition?: string | null; url_template?: string | null }>(field: VocabularyTextField): DefinitionListField<T> {
+function textFieldColumn<T extends { definition?: string | null; url_template?: string | null; rank?: number | null }>(field: VocabularyTextField): DefinitionListField<T> {
   return {
     key: field.key,
-    getValue: (item) => item[field.key] ?? "",
+    getValue: (item) => String(item[field.key] ?? ""),
     label: field.label,
     placeholder: field.placeholder,
     ariaLabel: field.ariaLabel,
-    track: field.multiline ? "minmax(14rem, 2.5fr)" : "minmax(14rem, 2fr)",
+    track: field.track ?? (field.multiline ? "minmax(14rem, 2.5fr)" : "minmax(14rem, 2fr)"),
     multiline: field.multiline,
     optional: true,
+    help: field.help,
+    inputType: field.inputType,
   };
 }
 
@@ -195,7 +206,7 @@ export function OrgTypeVocabularyPanel<T extends OrgTypeRow>({
         }}
         onRename={async (id, values) => {
           const current = items.find((i) => i.id === id);
-          const changed = extra !== undefined && values[extra.key] !== (current?.[extra.key] ?? "");
+          const changed = extra !== undefined && values[extra.key] !== String(current?.[extra.key] ?? "");
           await api.update(orgId, id, {
             name: values.name,
             ...(changed && extra ? { [extra.key]: extra.key === "url_template" ? values[extra.key] || null : values[extra.key] } : {}),
@@ -316,7 +327,7 @@ export function ProjectTypeVocabularyPanel({
         }}
         onRename={async (id, values) => {
           const current = items.find((i) => i.id === id);
-          const changed = extra !== undefined && values[extra.key] !== (current?.[extra.key] ?? "");
+          const changed = extra !== undefined && values[extra.key] !== String(current?.[extra.key] ?? "");
           await api.override(projectId, id, {
             name: values.name,
             ...(changed && extra ? { [extra.key]: extra.key === "url_template" ? values[extra.key] || null : values[extra.key] } : {}),

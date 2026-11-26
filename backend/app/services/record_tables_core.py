@@ -68,6 +68,8 @@ from app.services.project_hierarchy import resolve_effective_action_types
 from app.services.rbac import get_effective_project_roles
 from app.services.record_tables import PrincipalCells, find_many_by_code, parse_principal_cell
 from app.services.requirement_aliases import aliases_for_requirements
+from app.services.requirement_types import REQUIREMENT_TYPES
+from app.services.requirement_types import type_names as requirement_type_names
 from app.services.search_core import humanise_labels
 
 CAN_EDIT_ROLES = (ProjectRole.PROJECT_MANAGER, ProjectRole.PROJECT_ADMINISTRATOR, ProjectRole.STAKEHOLDER)
@@ -253,6 +255,7 @@ class _RequirementTable:
         refs = [principal_ref(v.owner_type, v.owner_id) for v in self.versions.values()]
         refs += [principal_ref(v.reviewer_type, v.reviewer_id) for v in self.versions.values()]
         self.people = PrincipalCells.load(db, refs)
+        self.type_names = requirement_type_names(db, [v.project_type_id for v in self.versions.values()])
         self.keywords = tag_service.keywords_for_requirements(db, ids) if ids else {}
         # Further places and their codes, read once for the whole page.
         self.aliases = aliases_for_requirements(db, ids)
@@ -274,7 +277,7 @@ def _list_requirements(db: Session, user: User, project_id: uuid.UUID, filters: 
             target_stage_from_id=uuid_filter(filters, "target_stage_from_id"),
             target_stage_to_id=uuid_filter(filters, "target_stage_to_id"),
             has_comments=filters.flag("has_comments"), only_watched=filters.flag("only_watched"),
-            phase=filters.one("phase"),
+            phase=filters.one("phase"), type_names=tuple(filters.many("type")),
         ),
         prefetch=False,
     )
@@ -303,6 +306,7 @@ def _requirement_columns(db: Session, project: Project) -> list[RecordColumn]:
         c.prefix for c in db.scalars(select(ProjectCategory).where(ProjectCategory.project_id == project.id))
     })
     stages = db.scalars(select(ProjectStage).where(ProjectStage.project_id == project.id).order_by(ProjectStage.sort_order)).all()
+    type_choices = tuple(e.name for e in REQUIREMENT_TYPES.resolve_effective(db, project.id, project.organization_id) if e.is_enabled)
 
     def version(t: _RequirementTable, r: Requirement) -> RequirementVersion:
         return t.versions[r.id]
@@ -324,6 +328,10 @@ def _requirement_columns(db: Session, project: Project) -> list[RecordColumn]:
             "level", "Level", lambda t, r: levels[version(t, r).level.value],
             enum_parser(RequirementLevel, "Level", blank=RequirementLevel.REQUIREMENT), kind="enum", editable=True,
             choices=tuple(levels.values()),
+        ),
+        RecordColumn(
+            "type", "Type", lambda t, r: t.type_names.get(version(t, r).project_type_id, "") if version(t, r).project_type_id else "",
+            text_parser, kind="enum", editable=True, choices=type_choices,
         ),
         RecordColumn(
             "target_version", "Target version",
@@ -431,6 +439,24 @@ def _stage(ctx: RecordImportContext, name: str) -> ProjectStage:
     return stage
 
 
+def _requirement_type_id(ctx: RecordImportContext, name: str) -> uuid.UUID | None:
+    """The entry of the project's requirement type list a cell names (without regard to case), or `None` for a blank
+    cell.
+
+    Raises:
+        RecordCellError: If the name is not an enabled type of the project's list.
+    """
+    if not name.strip():
+        return None
+    entries = cached_lookup(ctx, "req:types", lambda: {
+        e.name.lower(): e.id for e in REQUIREMENT_TYPES.resolve_effective(ctx.db, ctx.project.id, ctx.project.organization_id) if e.is_enabled
+    })
+    found = entries.get(name.strip().lower())
+    if found is None:
+        raise RecordCellError(f"Unknown requirement type '{name.strip()}'.")
+    return found
+
+
 def _custom_values_in(ctx: RecordImportContext, values: Mapping[str, Any]) -> dict[str, Any]:
     """The custom field values in `values`, keyed by definition id (blank text and list cells are absent)."""
     definitions = {
@@ -462,7 +488,7 @@ def _create_requirement(ctx: RecordImportContext, values: Mapping[str, Any]) -> 
         description=values.get("description", ""), owner=values.get("owner"), keywords=values.get("keywords", []),
         sort_order=count, target_stage_id=target_stage_id, level=values.get("level") or RequirementLevel.REQUIREMENT,
         custom_fields=custom_fields, review_date=values.get("review_date"), review_lead_days=values.get("review_lead_days"),
-        reviewer=values.get("reviewer"),
+        reviewer=values.get("reviewer"), type_id=_requirement_type_id(ctx, values.get("type") or ""),
     )
     if values.get(ADDITIONAL_PLACES_KEY):
         alias_service.set_aliases(
@@ -512,6 +538,7 @@ def _update_requirement(ctx: RecordImportContext, requirement: Requirement, valu
         reviewer=values.get("reviewer"), reviewer_explicitly_set="reviewer" in values,
         component_id=component_id, category_id=category_id, keywords=values.get("keywords"),
         additional_places=values.get(ADDITIONAL_PLACES_KEY),
+        type_id=_requirement_type_id(ctx, values.get("type") or "") if "type" in values else None, type_explicitly_set="type" in values,
     )
     log_event(ctx.db, entity_type="requirement", entity_id=requirement.id, action="updated", actor_id=ctx.user.id,
               project_id=ctx.project.id, detail={"via": "record_import"})
@@ -542,7 +569,7 @@ REQUIREMENT_TABLE = RecordTableProvider(
     update=_update_requirement,
     filter_params=frozenset({
         "include_archived", "is_completed", "component_id", "category_id", "keyword", "search", "status",
-        "target_stage_id", "target_stage_from_id", "target_stage_to_id", "has_comments", "only_watched", "phase",
+        "target_stage_id", "target_stage_from_id", "target_stage_to_id", "has_comments", "only_watched", "phase", "type",
     }),
     can_create=_may_edit,
     can_update=_may_edit,
@@ -657,7 +684,7 @@ ACTION_TABLE = RecordTableProvider(
 CHANGED_FIELD_LABEL = {
     "name": "Name", "reasoning": "Reasoning", "clarification": "Clarification", "description": "Description",
     "target_stage_id": "Target version", "level": "Level", "review_date": "Review date",
-    "review_lead_days": "Reminder lead time", "reviewer_id": "Assigned reviewer", "custom_fields": "Custom fields",
+    "review_lead_days": "Reminder lead time", "reviewer_id": "Assigned reviewer", "type_id": "Type", "custom_fields": "Custom fields",
     "attachments": "Attachments",
 }
 
@@ -684,6 +711,7 @@ class _ChangeRequestTable:
         refs += [principal_ref("user", cr.decided_by) for cr in change_requests if cr.decided_by]
         refs += [principal_ref(v.proposed_reviewer_type, v.proposed_reviewer_id) for v in self.versions.values()]
         self.people = PrincipalCells.load(db, refs)
+        self.type_names = requirement_type_names(db, [v.proposed_project_type_id for v in self.versions.values()])
         self.tags = tag_service.tag_names_for_records(db, "change_request", ids) if ids else {}
 
     def version(self, cr: ChangeRequest) -> ChangeRequestVersion:
@@ -748,6 +776,9 @@ def _change_request_columns(db: Session, project: Project) -> list[RecordColumn]
         RecordColumn(
             "proposed_level", "Proposed level", lambda t, cr: levels[t.version(cr).proposed_level.value] if t.version(cr).proposed_level else "",
             kind="enum",
+        ),
+        RecordColumn(
+            "proposed_type", "Proposed type", lambda t, cr: t.type_names.get(t.version(cr).proposed_project_type_id, ""), kind="enum",
         ),
         RecordColumn(
             "proposed_target_version", "Proposed target version", lambda t, cr: t.stages.get(t.version(cr).proposed_target_stage_id, ""), kind="enum",

@@ -12,12 +12,12 @@ moved here from Module 5 Phase 1, and the requests in
 [issue #41](https://github.com/ballardr/reqtrackmanager/issues/41) (Q18). This plan replaces the former separate Module 7
 and Module 8 plans; Module 8 is no longer a separate number.
 
-**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phases 1, 1b, 2, 3, 4, 5 and 6 done 2026-11-26; Phase 7 (steps 7a to 7k), Phase 7.5 (steps a to g), Phase 8 and Phase 9 done 2026-11-26. **Decision tags:** every
+**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phases 1, 1b, 2, 3, 4, 5 and 6 done 2026-11-26; Phase 7 (steps 7a to 7k), Phase 7.5 (steps a to g), Phases 8, 9 and 10 done 2026-11-26. **Decision tags:** every
 decision says `Decided by: User` or `Decided by: Agent`.
 
 ## Status / Resume Here
 
-12 / 23 phases complete. Phase 10 is next.
+13 / 23 phases complete. Phase 11 is next.
 
 | # | Phase | Half | Status |
 |---|-------|------|--------|
@@ -33,7 +33,7 @@ decision says `Decided by: User` or `Decided by: Agent`.
 | 7.5 | Stage governance follow-ups and flexible states (stage Health, allowed phases, phase and deadline reminders on the review engine, a profile-required workflow, custom states for other types, Compliance approval path) | Governance | [x] Done 2026-11-26 (a to g) |
 | 8 | Governance frontend UI | Governance | [x] Done 2026-11-26 |
 | 9 | Governance docs website coverage | Governance | [x] Done 2026-11-26 |
-| 10 | Requirement types (moved from Module 5 Phase 1) | Traceability | [ ] Not started |
+| 10 | Requirement types (moved from Module 5 Phase 1) | Traceability | [x] Done 2026-11-26 |
 | 11 | Traceability rule configuration, including the requirement hierarchy | Traceability | [ ] Not started |
 | 12 | Enforcement levels, status and baseline hand-off | Traceability | [ ] Not started |
 | 13 | Traceability exceptions | Traceability | [ ] Not started |
@@ -79,8 +79,9 @@ The merge costs, and the plan answers:
 | Q7 | One review engine generalised from `RequirementReview` and the Risk review logic, then both migrated (7a, 7d) | User |
 | Q8 | Governance Health supports on-demand **and** snapshot. A per-project setting picks the mode; on-demand is the default; a perf scenario measures where on-demand becomes slow and the result is shown as guidance in settings. Nothing is forced | User |
 | Q9 | ~~Rule schema: one row per AND, a target-type list per OR, plus one optional condition per rule~~ **Superseded by Q19** | User (condition: Agent) |
-| Q10 | **Rules are the only hierarchy.** Requirement types are an ordered vocabulary; every "X must trace to Y" relationship, including multi-level chains, is a rule; the hierarchy screen is a tree derived from rules. No separate hierarchy model | User |
-| Q10b | Requirement types become their own sub-component `requirement_types`; Module 5 Phase 1 moves here whole | User |
+| Q10 | **Rules are the only hierarchy (the type rank, Q31, is an input they read).** Requirement types are an ordered vocabulary; every "X must trace to Y" relationship, including multi-level chains, is a rule; the hierarchy screen is a tree derived from rules. No separate hierarchy model | User |
+| Q10b | Requirement types become their own sub-component `requirement_types`; Module 5 Phase 1 moves here whole. **Narrowed 2026-11-26 (User):** the vocabulary and the type column are core (as Action Types), so no `requirement_types` sub-component exists; Module 5 Phase 1 still moves here whole | User |
+| Q31 | **Requirement types carry a rank (priority)** separate from the list order: lower is higher, equal ranks are peers, null is unranked. It orders lists, exports and report layouts and is an input rules can read (for example a derivation link should not run from a lower-ranked type to a higher-ranked one); rules stay the one enforcement mechanism. Supersedes the part of Q10 that says the order carries no hierarchy meaning. Traceability Manager roles do not manage types (admin gates) | User (2026-11-26) |
 | Q11 | An exception is approved through the Governance approval policy for its type when `approval_policies` is enabled, otherwise through a dedicated approve permission. The requester never approves their own exception. The route stays `APPROVAL_ACTION_ROUTE_EXTRA` (human-only) | User |
 | Q12 | Matrices: saved `TraceabilityMatrixDefinition` plus ad hoc views, always generated live | User |
 | Q13 | "Required" with `baseline_policies` off is allowed and labelled "not enforced" everywhere; nothing silently pretends to block | User |
@@ -111,7 +112,6 @@ The merge costs, and the plan answers:
 | `review_policies` | Governance | Scheduled reassessment | — |
 | `baseline_policies` | Governance | Pre-baseline checks, check-provider registry | — |
 | `governance_health` | Governance | Live and snapshot aggregate view | — (shows what is enabled) |
-| `requirement_types` | Traceability | Ordered requirement type vocabulary | — |
 | `traceability_rules` | Traceability | Rules, requirement hierarchy view, status, enforcement levels | — |
 | `traceability_exceptions` | Traceability | Exceptions with approval | `traceability_rules` |
 | `traceability_matrices` | Traceability | Matrix definitions, coverage | — (coverage by rule needs `traceability_rules`) |
@@ -120,7 +120,6 @@ The merge costs, and the plan answers:
 ```mermaid
 flowchart TD
     BP["baseline_policies"]
-    RT["requirement_types"]
     TR["traceability_rules"]
     TE["traceability_exceptions"]
     TM["traceability_matrices"]
@@ -129,7 +128,6 @@ flowchart TD
     TE -->|requires| TR
     XP -->|requires| TR
     TR -. "Required level enforced only when" .-> BP
-    TR -. "conditions and targets use" .-> RT
     TM -. "rule coverage needs" .-> TR
     GH -. "includes results of" .-> BP
     GH -. "includes results of" .-> TR
@@ -298,7 +296,7 @@ two modes, organisation default (Q26). Migration order: Q27. `requires`: Q28. Mo
 ## Phase 1 — Module skeleton, sub-components, engine registration hooks (done 2026-11-26)
 
 **Scope:** `backend/app/modules/traceability/` and `frontend/src/modules/traceability/`;
-`ModuleDefinition` with the ten `sub_components`; the `requires` field with tests across the project, organisation and
+`ModuleDefinition` with the ten `sub_components` (nine after Phase 10); the `requires` field with tests across the project, organisation and
 registry tiers (Q28: ineffective, data kept, the toggle says why); the new generic registration fields on
 `ModuleDefinition` and their registries in `modules/registry.py`: `review_adapters`, `baseline_check_providers`,
 `record_subtypes` (F8), policy resolvers for the seams of Result 3; the five administrative atoms of Result 6 and the two
@@ -310,7 +308,7 @@ enum or column. Outcome: the module can be enabled with every part independently
 
 **Built (account in `docs/decisions.md`, "Module 7 Phase 1"; contracts in `docs/modules.md` §2a and §4l16):**
 
-- `backend/app/modules/traceability/` and `frontend/src/modules/traceability/module.ts`: ten sub-components, `requires` on
+- `backend/app/modules/traceability/` and `frontend/src/modules/traceability/module.ts`: ten sub-components (nine after Phase 10), `requires` on
   `traceability_exceptions` and `cross_project_traceability`, four role definitions, `default_enabled=False`.
 - `requires` on `ModuleSubComponentDefinition`, resolved at the project and organisation tiers, validated when
   `ModuleDefinition` is built, reported as `blocked_by` by both sub-component list endpoints and shown by
@@ -834,13 +832,24 @@ Moved from Module 5 Phase 1 (**Decided by: User**, 2026-11-09). **Scope** (§14/
 `RequirementTypeDefinition` (net-new; no existing enum to migrate), seeded Business /
 Stakeholder / Project defaults at root projects only, a nullable `type_id` on `Requirement`,
 ordered and enable/disable-able, on the shared `TypeVocabulary` with an organisation tier,
-project hide/restore and nested fallback (Q14). The order drives display and default report
-order only: **it carries no hierarchy meaning** (Q10). Create and edit share one field group;
+project hide/restore and nested fallback (Q14). The list order drives display only and
+carries no hierarchy meaning; the separate **rank** (Q31, added after the first build) is the priority that orders lists and
+reports and that rules can read. Create and edit share one field group;
 list filter, export/import column, search field and report field come with the
 registration.
 
 **Why:** a fixed three-tier structure cannot represent the two- or four-tier structures
 organisations use, and the hierarchy itself belongs to rules.
+
+**Built (2026-11-26; account in `docs/decisions.md`, "Module 7 Phase 10"; design in `docs/solution-architecture.md`):**
+
+- **Core, not a sub-component (Decided by: User).** `models/requirement_type.py` (`RequirementTypeDefinition`, `ProjectRequirementType`), `services/requirement_types.py` (`REQUIREMENT_TYPES`, `resolve_requirement_type`, `type_names`, `requirement_subtypes`, `matching_type_row_ids`, `copy_project_requirement_types`), `routers/requirement_types.py` on the shared `vocabulary_endpoints`; migration `0212` (tables, `requirement_versions.project_type_id`, `change_request_versions.proposed_project_type_id`, defaults for existing organisations). The `requirement_types` sub-component is removed.
+- **Versioned content (Decided by: User).** Create, direct edit (omitted leaves, null clears), change request (`type_id` changeable field, `proposed_type_id`), alias independence, templates, project and organisation bundles, record table Export and Import (`Type` column), report field, list filter by name and sort by the configured order, MCP tool and parameters, seeds, perf generator.
+- **Registered as the requirement's record sub-type** (`CORE_RECORD_SUBTYPES["requirement"]`), which Phase 11's rules use.
+- **Frontend.** `RequirementTypesPanels` in Organisation Admin (Projects) and Project Admin (Fields & actions), the Type field in `RequirementFields` (create, edit, change request), the Requirements list filter, column and sort, the change request detail. Stories and the Playwright spec `requirement-types.spec.ts`.
+- **Rank (Q31, Decided by: User).** `rank` on both tiers (migration `0212`), the Rank column in both panels, Sort by Type by rank, the `requirement_type_rank` report field, the Engineering Specification starter ordered by rank. Phase 11 reads it in rule conditions.
+- **Deviations (Decided by: Agent):** no root-project seeding (the organisation tier carries the defaults); module report collectors and the default list order are unchanged (decisions entry).
+- **Traps.** `create_project_local` ordered a new project-only entry by row count (fixed for every typed list); a stories mock that omits `/requirement-types` leaves the form with no list, so every page that renders `RequirementFields` needs the route (`buildRequirementTypes` in `storybook-helpers.tsx`); the list opens in Tile view, so an end-to-end check of the column switches to List view first.
 
 ## Phase 11 — Rule configuration (`traceability_rules`)
 
@@ -850,7 +859,7 @@ A rule has a **source** (artefact type and optional sub-type, through `record_su
 tree, a **requires** tree and one **enforcement level**. A tree node is `all` (AND), `any` (OR) or, in `applies when` only,
 `not`. Leaves:
 
-- *applies when*: a registered condition field (sub-type, component, category, tag; a type may register more, such as
+- *applies when*: a registered condition field (sub-type, the requirement type's rank, component, category, tag; a type may register more, such as
   status), an operator and a value.
 - *requires*: a link-type set (or "any", or "untyped"), a direction (outgoing or incoming), a target set of (artefact type,
   optional sub-type) counted together, and `min`/`max`.
@@ -939,7 +948,7 @@ the decision). Approving an exception is excluded (`APPROVAL_ACTION_ROUTE_EXTRA`
 
 ## Phase 16 — Traceability frontend UI
 
-Requirement type screens, rule configuration (the three §19 presets as a quick-setup path
+Rule configuration (the three §19 presets as a quick-setup path
 over the full editor), the hierarchy tree derived from rules, per-record status with
 exceptions shown distinctly, matrix viewer and saved definitions, coverage dashboard,
 exception request and approval flow, and the issue #41 surfaces: an "Orphans only" filter
@@ -950,7 +959,7 @@ columns in the list column chooser, and an orphan badge on the record header. Pl
 
 Tracked as its own phase (**Decided by: User**, 2026-09-21; scope **Decided by: Agent**).
 
-- Pages beside the Governance ones: requirement types and the rules-only hierarchy; rules and
+- Pages beside the Governance ones: the rules-only hierarchy (requirement types are documented with core Requirements management); rules and
   the guarantee that disabling Traceability never disables ordinary relationships; the three
   enforcement levels, and that Traceability only computes status while the baseline policy
   blocks; presets versus the full editor; exceptions rendered distinctly from satisfaction;

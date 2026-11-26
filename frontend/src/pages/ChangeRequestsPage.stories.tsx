@@ -6,7 +6,7 @@ import { api } from "../api/client";
 import type { Category, Component, ProjectStage } from "../api/types";
 import { buildCandidate, buildGraph, buildOption } from "../testing/artefactLinksFixtures";
 import { buildRecordColumns } from "../testing/recordTablesFixtures";
-import { buildChangeRequest, buildRequirement, buildUser, withRouter, withStatefulAuth, withTerminology, withToast } from "../testing/storybook-helpers";
+import { buildChangeRequest, buildRequirement, buildUser, withRouter, withStatefulAuth, withTerminology, withToast, buildRequirementTypes } from "../testing/storybook-helpers";
 import { ChangeRequestsPage } from "./ChangeRequestsPage";
 import { chooseExport } from "../testing/listActionsMenu";
 
@@ -42,6 +42,7 @@ function mockChangeRequestsListApis({ links = false }: { links?: boolean } = {})
     if (path.includes("/components")) return components;
     if (path.includes("/categories")) return categories;
     if (path.includes("custom-fields")) return [];
+    if (path.endsWith("/requirement-types")) return buildRequirementTypes();
     if (path.includes("/stages")) return stages;
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1" };
     if (path.includes("/users")) return [];
@@ -405,6 +406,7 @@ export const NoLockableRequirementsShowsHint: Story = {
       if (path.includes("/components")) return components;
       if (path.includes("/categories")) return categories;
       if (path.includes("custom-fields")) return [];
+      if (path.endsWith("/requirement-types")) return buildRequirementTypes();
       if (path.includes("/stages")) return stages;
       if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1" };
       if (path.includes("/users")) return [];

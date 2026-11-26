@@ -13,6 +13,7 @@ import { userEvent, within } from "storybook/test";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import type { ScoringScheme } from "../api/scoring";
+import type { EffectiveTypeRow } from "../components/TypeVocabularyPanels";
 import { AuthContext, type AuthContextValue } from "../context/AuthContextValue";
 import { PolicyAcceptanceContext } from "../context/PolicyAcceptanceValue";
 import { ProjectContext } from "../context/ProjectContextValue";
@@ -373,6 +374,13 @@ export function buildCategory(overrides: Partial<Category> = {}): Category {
   };
 }
 
+/** The default requirement type list of a project (`GET .../requirement-types`): the three organisation defaults. */
+export function buildRequirementTypes(): EffectiveTypeRow[] {
+  return ["Business Requirement", "Stakeholder Requirement", "Project Requirement"].map((name, index) => ({
+    id: `requirement-type-${index + 1}`, name, display_order: index, is_enabled: true, source: "org" as const,
+  }));
+}
+
 export function buildRequirement(overrides: Partial<Requirement> = {}): Requirement {
   // `is_locked`/`requires_approval` derive from `status` by the backend's rule
   // (`LOCKED_STATUSES`/`REQUIRES_APPROVAL_STATUSES` in
@@ -395,6 +403,8 @@ export function buildRequirement(overrides: Partial<Requirement> = {}): Requirem
     component_id: "component-1",
     category_id: "category-1",
     target_stage_id: "stage-1",
+    type_id: null,
+    type_name: null,
     level: "requirement",
     sort_order: 0,
     creator_id: "user-1",
@@ -484,6 +494,8 @@ export function buildChangeRequest(overrides: Partial<ChangeRequest> = {}): Chan
     proposed_clarification: null,
     proposed_description: null,
     proposed_target_stage_id: null,
+    proposed_type_id: null,
+    proposed_type_name: null,
     proposed_level: null,
     reason: "Clarify the reset link expiry window.",
     custom_fields: {},

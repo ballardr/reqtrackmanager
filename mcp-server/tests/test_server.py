@@ -48,6 +48,7 @@ READ_ONLY_TOOLS = {
     "list_permissions", "list_custom_roles", "get_custom_role",
     "list_components", "list_categories", "list_stages",
     "list_tags", "get_artefact_tags", "find_artefacts_by_tag", "list_external_systems", "list_organization_external_systems",
+    "list_requirement_types",
     "get_artefact_external_references", "find_artefacts_by_external_reference", "get_record_by_code", "search_records",
     "get_record_list_report",
     # Custom report layouts: listing, reading, running, and the two text-view converters (which store nothing).

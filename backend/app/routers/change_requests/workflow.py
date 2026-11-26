@@ -57,6 +57,7 @@ from app.services.requirements import (
     create_requirement,
     get_current_version,
     get_current_version_for_update,
+    resolve_type_or_422,
 )
 
 
@@ -308,6 +309,11 @@ def decide_change_request(
                 status_value=None,
                 target_stage_id=version.proposed_target_stage_id, target_stage_explicitly_set="target_stage_id" in changed,
                 level=version.proposed_level if "level" in changed else None,
+                project_type_id=(
+                    resolve_type_or_422(db, project_or_404(db, project_id), version.proposed_project_type_id)
+                    if "type_id" in changed else None
+                ),
+                project_type_explicitly_set="type_id" in changed,
                 change_note=f"Applied via approved change request: {version.reason}",
                 change_request_id=cr.id,
                 custom_fields=version.custom_fields if "custom_fields" in changed else None,
@@ -481,6 +487,7 @@ def decide_change_request(
                 clarification=version.proposed_clarification or "", description=version.proposed_description or "",
                 owner=None, keywords=[], sort_order=count,
                 target_stage_id=target_stage_id, level=version.proposed_level or RequirementLevel.REQUIREMENT,
+                type_id=version.proposed_project_type_id,
                 custom_fields=version.custom_fields,
                 review_date=version.proposed_review_date, review_lead_days=version.proposed_review_lead_days,
                 reviewer=revalidated_principal(

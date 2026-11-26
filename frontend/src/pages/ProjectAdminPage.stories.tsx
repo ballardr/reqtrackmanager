@@ -34,6 +34,7 @@ import {
   withTerminology,
   withToast,
   openAddDialog,
+  buildRequirementTypes,
 } from "../testing/storybook-helpers";
 import { requiredCaptions } from "../testing/requiredMarkers";
 import { buildLayoutSummary } from "../testing/reportLayoutFixtures";
@@ -106,6 +107,7 @@ function mockProjectAdminApis(
     // Checked before the "/orgs/" + "/groups"/"/users" branches below,
     // which this bare org-detail path doesn't match (no further segment).
     if (path === `/api/v1/orgs/${project.organization_id}`) return organization;
+    if (path.endsWith("/requirement-types")) return buildRequirementTypes();
     if (path.endsWith("/stage-workflows")) return [buildStageWorkflow()];
     if (path.endsWith("/stage-workflows/hidden")) return [];
     if (path.includes("/stages")) return overrides.stages ?? stages;

@@ -23,6 +23,7 @@ import {
   withStatefulAuth,
   withTerminology,
   withToast,
+  buildRequirementTypes,
 } from "../testing/storybook-helpers";
 import { currentLifecycleStep, promoteViaTrack } from "../testing/lifecycleTrack";
 import { chooseRecordAction, recordActionNames } from "../testing/recordActions";
@@ -77,6 +78,7 @@ function mockRequirementDetailApis(
     if (path.endsWith(`/requirements/${REQUIREMENT_ID}/files`)) return [];
     if (path.includes("custom-fields")) return [];
     if (path.endsWith("/stages")) return [];
+    if (path.endsWith("/requirement-types")) return buildRequirementTypes();
     if (path.includes("/activity")) return activityPage(extra.activity ?? []);
     if (path.includes(`/artefacts/requirement/${REQUIREMENT_ID}/link-graph`)) return extra.linkGraph ?? buildGraph();
     if (path.includes(`/artefacts/requirement/${REQUIREMENT_ID}/link-types`)) return extra.linkOptions ?? [];
@@ -843,7 +845,7 @@ export const VersionHistoryShowsLabelledStatus: Story = {
       history: [
         {
           version_number: 1, name: "Reset password", reasoning: "r", clarification: "", description: "",
-          status: "reviewed", owner: { type: "user", id: "user-1", label: "Alex Morgan", member_count: null, exists: true }, target_stage_id: "s1", level: "requirement",
+          status: "reviewed", owner: { type: "user", id: "user-1", label: "Alex Morgan", member_count: null, exists: true }, target_stage_id: "s1", level: "requirement", type_name: null,
           change_note: "Initial submission", change_request_id: null, created_by: "user-1",
           created_at: "2026-01-01T00:00:00Z", valid_to: "2026-01-02T00:00:00Z",
         },
@@ -867,7 +869,7 @@ export const VersionsInTheBodyActivityInTheAsideTab: Story = {
       history: [
         {
           version_number: 1, name: "Reset password", reasoning: "r", clarification: "", description: "",
-          status: "reviewed", owner: { type: "user", id: "user-1", label: "Alex Morgan", member_count: null, exists: true }, target_stage_id: "s1", level: "requirement",
+          status: "reviewed", owner: { type: "user", id: "user-1", label: "Alex Morgan", member_count: null, exists: true }, target_stage_id: "s1", level: "requirement", type_name: null,
           change_note: "Initial submission", change_request_id: null, created_by: "user-1",
           created_at: "2026-01-01T00:00:00Z", valid_to: "2026-01-02T00:00:00Z",
         },

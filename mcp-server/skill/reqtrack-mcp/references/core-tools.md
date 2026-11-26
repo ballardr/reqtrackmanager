@@ -84,7 +84,7 @@ Parameters: `name*` (string), `family*` (string), `tree*` (object), `description
 
 Creates a new requirement. Always starts in "draft" status — there is no way to create one pre-approved, and no tool here can approve it afterward either; use the ReqTrackManager UI for that.
 
-Parameters: `project_id` (string), `name*` (string), `component_id*` (string), `category_id*` (string), `reasoning` (string), `clarification` (string), `description` (string), `owner` (object), `target_stage_id` (string), `level` (string), `keywords` (list[string]), `custom_fields` (object), `review_date` (string), `review_lead_days` (integer), `reviewer` (object), `additional_places` (list[object])
+Parameters: `project_id` (string), `name*` (string), `component_id*` (string), `category_id*` (string), `reasoning` (string), `clarification` (string), `description` (string), `owner` (object), `target_stage_id` (string), `level` (string), `keywords` (list[string]), `custom_fields` (object), `review_date` (string), `review_lead_days` (integer), `reviewer` (object), `additional_places` (list[object]), `type_id` (string)
 
 ## `decide_change_request` (approval)
 
@@ -382,11 +382,17 @@ Lists the discussion thread on a requirement.
 
 Parameters: `project_id` (string), `requirement_id*` (string)
 
+## `list_requirement_types` (read)
+
+Lists the requirement types a project offers (Business, Stakeholder and Project Requirement by default).
+
+Parameters: `project_id` (string)
+
 ## `list_requirements` (read)
 
 Lists requirements in a project, with the same filters the Requirements page's filter panel offers.
 
-Parameters: `project_id` (string), `status` (string), `search` (string), `keyword` (string), `component_id` (string), `category_id` (string), `include_archived` (boolean), `tags` (list[string]), `tag_mode` (string), `external_systems` (list[string]), `external_key` (string)
+Parameters: `project_id` (string), `status` (string), `search` (string), `keyword` (string), `component_id` (string), `category_id` (string), `include_archived` (boolean), `tags` (list[string]), `tag_mode` (string), `external_systems` (list[string]), `external_key` (string), `requirement_types` (list[string])
 
 ## `list_saved_report_snippets` (read)
 
@@ -548,7 +554,7 @@ Parameters: `layout_id*` (string), `name` (string), `description` (string), `fol
 
 Edits an unlocked requirement's content in place.
 
-Parameters: `project_id` (string), `requirement_id*` (string), `name` (string), `reasoning` (string), `clarification` (string), `description` (string), `component_id` (string), `category_id` (string), `owner` (object), `target_stage_id` (string), `level` (string), `keywords` (list[string]), `custom_fields` (object), `review_date` (string), `review_lead_days` (integer), `reviewer` (object), `additional_places` (list[object]), `change_note` (string)
+Parameters: `project_id` (string), `requirement_id*` (string), `name` (string), `reasoning` (string), `clarification` (string), `description` (string), `component_id` (string), `category_id` (string), `owner` (object), `target_stage_id` (string), `level` (string), `keywords` (list[string]), `custom_fields` (object), `review_date` (string), `review_lead_days` (integer), `reviewer` (object), `additional_places` (list[object]), `type_id` (string), `change_note` (string)
 
 ## `update_saved_report_snippet` (write)
 

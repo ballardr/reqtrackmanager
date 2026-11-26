@@ -94,6 +94,7 @@ from app.models.requirement_link_type import (
     ProjectLinkTypeVisibility,
     RequirementLinkTypeDefinition,
 )
+from app.models.requirement_type import ProjectRequirementType, RequirementTypeDefinition
 from app.models.scoring import (
     ScoringBand,
     ScoringCellRating,
@@ -122,6 +123,8 @@ __all__ = [
     "ProjectLifecycleSetting",
     "ProjectCodePrefix",
     "ProjectExternalSystem",
+    "ProjectRequirementType",
+    "RequirementTypeDefinition",
     "ArtefactPlacement",
     "RecordComment",
     "RecordCommentPin",

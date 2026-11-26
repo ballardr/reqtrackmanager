@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import {
   buildActionType, buildCategory, buildComponent, buildProject, buildRequirement, buildScoringScheme, buildStage, buildUser,
   withRouter, withStatefulAuth, withToast,
+  buildRequirementTypes,
 } from "../testing/storybook-helpers";
 import { buildOption } from "../testing/artefactLinksFixtures";
 import creatableRecordTypes from "./creatableRecordTypes.json";
@@ -30,6 +31,7 @@ const meta: Meta = {
       if (path.endsWith("/components")) return [buildComponent({ id: "c-1", name: "Core", prefix: "CORE" })] as never;
       if (path.endsWith("/categories")) return [buildCategory({ id: "k-1", component_id: "c-1", name: "General", prefix: "GEN" })] as never;
       if (path.endsWith("/stages")) return [buildStage({ id: "s-1", name: "Version 1" })] as never;
+      if (path.endsWith("/requirement-types")) return buildRequirementTypes() as never;
       if (path.endsWith("/action-types")) return [buildActionType({ id: "at-1", name: "Review" })] as never;
       if (path.endsWith("/requirements")) return [buildRequirement({ id: "r-1", is_locked: true })] as never;
       return [] as never;

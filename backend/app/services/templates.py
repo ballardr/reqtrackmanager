@@ -53,6 +53,7 @@ from app.services.external_references import copy_project_systems
 from app.services.link_type_scope import resolve_link_type_scope
 from app.services.relationships import create_link as create_artefact_link
 from app.services.requirement_aliases import aliases_for_requirements
+from app.services.requirement_types import REQUIREMENT_TYPES, copy_project_requirement_types
 from app.services.requirements import get_current_version, get_keywords, set_keywords
 from app.services.stage_workflows import PhaseInput, effective_workflows, new_stage, phases_of, start_phase, write_workflow
 from app.services.template_content import copy_module_content, copy_module_enablement, copy_project_setup
@@ -184,6 +185,7 @@ def clone_project(
     lifecycles.copy_project(db, source, new_project, creator.id)
     approval_separation.copy_project(db, source, new_project)
     copy_project_systems(db, source, new_project)
+    requirement_types = copy_project_requirement_types(db, source, new_project)
 
     # Old project group id -> its copy in the new project, so a requirement owned by (or assigned for review
     # to) one of the template's project groups is owned by the copy, not by a group of another project.
@@ -246,6 +248,7 @@ def clone_project(
                 # The source's `target_stage_id` belongs to the template's stages, which are not copied, so every
                 # clone targets the new project's starting stage; `level` copies across.
                 target_stage_id=new_scoping_stage.id, level=current_version.level,
+                project_type_id=requirement_types.row_id(_type_name(db, current_version)),
                 **_cloned_owner(current_version, group_id_map, creator), sort_order=current_version.sort_order,
                 created_by=creator.id, created_at=now, change_note=f"Copied from template project '{source.name}'.",
                 custom_fields=remapped_custom_fields,
@@ -324,6 +327,11 @@ def copy_requirement_links(
             target_type=ArtefactType.REQUIREMENT, target_id=new_ids[copied_codes[link.target_id]],
             link_type_id=link_type_id, created_by=creator.id, enforce_rules=False,
         )
+
+
+def _type_name(db: Session, version: RequirementVersion) -> str | None:
+    """The name of the requirement type a version holds, or `None` when it is untyped."""
+    return REQUIREMENT_TYPES.display_name(db, org_type_id=None, project_type_id=version.project_type_id)
 
 
 def _cloned_owner(version: RequirementVersion, group_id_map: dict[UUID, UUID], creator: User) -> dict:

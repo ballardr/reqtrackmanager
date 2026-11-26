@@ -148,16 +148,16 @@ SPECIFICATION = StarterLayout(
         (10, section("Scope and system context", "Replace this paragraph with the scope and system context.")),
         (20, (
             heading("Requirement hierarchy"),
-            text("Requirements grouped by component, with their level, category and status."),
+            text("Requirements grouped by component, highest priority requirement type first, with their level, category and status."),
             {
                 "type": "group", "source": {"record_type": "requirement"}, "by": "component", "as": "comp",
                 "children": [
                     heading("{{comp.value}} ({{comp.count}})", 3),
                     {
-                        "type": "table", "source": {"group": "comp", "sort": [{"field": "code"}]},
+                        "type": "table", "source": {"group": "comp", "sort": [{"field": "requirement_type_rank"}, {"field": "code"}]},
                         "columns": fixed_columns([
-                            ("code", "Code"), ("title", "Requirement"), ("description", "Description"), ("level", "Level"),
-                            ("category", "Category"), ("status", "Status"),
+                            ("code", "Code"), ("title", "Requirement"), ("description", "Description"), ("requirement_type", "Type"),
+                            ("level", "Level"), ("category", "Category"), ("status", "Status"),
                         ]),
                         "empty_text": "No requirements.",
                     },
@@ -166,10 +166,10 @@ SPECIFICATION = StarterLayout(
         )),
         (30, (
             heading("Requirement types"),
-            text("How many requirements each category holds."),
+            text("How many requirements each requirement type holds."),
             {
-                "type": "group", "source": {"record_type": "requirement"}, "by": "category", "as": "cat",
-                "children": [text("**{{cat.value}}**: {{cat.count}}")],
+                "type": "group", "source": {"record_type": "requirement"}, "by": "requirement_type", "as": "kind",
+                "children": [text("**{{kind.value}}**: {{kind.count}}")],
             },
         )),
         (90, section(

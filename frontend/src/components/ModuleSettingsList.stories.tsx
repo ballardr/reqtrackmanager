@@ -79,7 +79,7 @@ export const BlockedSubComponent: Story = {
             control: <ToggleSwitch checked={false} label="Enable Traceability exceptions" onChange={fn()} />,
           },
           {
-            key: "cross", name: "Cross-project traceability", hint: "Inactive until Traceability rules and Requirement types are on.",
+            key: "cross", name: "Cross-project traceability", hint: "Inactive until Traceability rules and Traceability matrices are on.",
             control: <ToggleSwitch checked={false} label="Enable Cross-project traceability" onChange={fn()} />,
           },
         ],
@@ -90,7 +90,7 @@ export const BlockedSubComponent: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "3 components · 1 on" }));
     await expect(canvas.getByText("Inactive until Traceability rules is on.")).toBeInTheDocument();
-    await expect(canvas.getByText("Inactive until Traceability rules and Requirement types are on.")).toBeInTheDocument();
+    await expect(canvas.getByText("Inactive until Traceability rules and Traceability matrices are on.")).toBeInTheDocument();
     await expect(canvas.getByRole("switch", { name: "Enable Traceability exceptions" })).not.toBeChecked();
   },
 };

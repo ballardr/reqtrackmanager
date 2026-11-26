@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
+import { listRequirementTypes } from "../api/requirementTypes";
 import type {
   Category,
   Component,
@@ -61,6 +62,7 @@ import { addSortParams, TIME_SORT_KEYS, useListSort } from "../hooks/useListSort
 import { useUrlChoice, useUrlFlag, useUrlText } from "../hooks/useUrlFilter";
 import { addSharedListFilters } from "../utils/listFilterParams";
 import { InlineSelect } from "../components/LabeledSelect";
+import type { EffectiveTypeRow } from "../components/TypeVocabularyPanels";
 
 const PAGE_SIZE = 30;
 
@@ -73,7 +75,7 @@ const STATUS_OPTIONS: RequirementStatus[] = ["draft", "reviewed", "approved", "a
  * order); it has no direction and the server is sent no `sort` for it.
  */
 const COMPONENT_ORDER = "component";
-const SORT_KEYS = [COMPONENT_ORDER, "unique_code", "name", "status", "target", "placement", "references", ...TIME_SORT_KEYS] as const;
+const SORT_KEYS = [COMPONENT_ORDER, "unique_code", "name", "status", "target", "placement", "type", "references", ...TIME_SORT_KEYS] as const;
 
 /**
  * Requirement browser (C-G-04: sorted by component/category): search by name/ID
@@ -105,6 +107,7 @@ export function RequirementsPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [stages, setStages] = useState<ProjectStage[]>([]);
   const [workflows, setWorkflows] = useState<StageWorkflow[]>([]);
+  const [requirementTypes, setRequirementTypes] = useState<EffectiveTypeRow[]>([]);
   // The list's filters, search and sort live in the URL (`useUrlFilter`), so it comes back as it was left
   // after a visit to a record, and a dashboard glance links here with the same `status`, `stage` and
   // `completed` parameters. Completion is a separate overlay marker, not a status value.
@@ -135,6 +138,8 @@ export function RequirementsPage() {
   }, [legacyComponent, legacyCategory, setSearchParams]);
   // The phase that governs a requirement: its component's own track when component phases are on, else its stage's.
   const [phaseFilter, setPhaseFilter] = useUrlText("phase");
+  // By the type's name, so the choice also matches the same type in a related project's rows.
+  const [typeFilter, setTypeFilter] = useUrlText("type");
   const [hasCommentsOnly, setHasCommentsOnly] = useUrlFlag("comments");
   const [onlyWatched, setOnlyWatched] = useUrlFlag("watched");
   // An archived requirement's detail page has the Restore button; this filter is how the list reaches one.
@@ -170,6 +175,7 @@ export function RequirementsPage() {
     if (stageFrom) params.set("target_stage_from_id", stageFrom);
     if (stageTo) params.set("target_stage_to_id", stageTo);
     if (phaseFilter) params.set("phase", phaseFilter);
+    if (typeFilter) params.set("type", typeFilter);
     if (hasCommentsOnly) params.set("has_comments", "true");
     if (onlyWatched) params.set("only_watched", "true");
     if (includeArchived) params.set("include_archived", "true");
@@ -219,13 +225,15 @@ export function RequirementsPage() {
     // A fresh load (filter/search change, post-bulk-op reload) invalidates the
     // selection; "load more" calls `loadRequirements` directly and keeps it.
     setSelectedIds(new Set());
-    const [comps, cats, stgs, flows] = await Promise.all([
+    const [comps, cats, stgs, flows, types] = await Promise.all([
       api.get<Component[]>(`/api/v1/projects/${projectId}/components`),
       api.get<Category[]>(`/api/v1/projects/${projectId}/categories`),
       api.get<ProjectStage[]>(`/api/v1/projects/${projectId}/stages`),
       api.get<StageWorkflow[]>(`/api/v1/projects/${projectId}/stage-workflows`),
+      listRequirementTypes(projectId),
       loadRequirements(0, false),
     ]);
+    setRequirementTypes(types);
     setComponents(comps);
     setCategories(cats);
     setStages(stgs);
@@ -240,11 +248,12 @@ export function RequirementsPage() {
     { key: "status", label: strings.changeRequests.status, sortable: true },
     { key: "target", label: "Target · level", sortable: true },
     { key: "placement", label: "Component · category", sortable: true },
+    { key: "type", label: strings.requirements.sortType, sortable: true },
     { key: "references", label: strings.references.column, sortable: true },
   ];
 
   useLoadOnChange(reload, [
-    projectId, search, statusFilter, completedFilter, stageFrom, stageTo, phaseFilter,
+    projectId, search, statusFilter, completedFilter, stageFrom, stageTo, phaseFilter, typeFilter,
     hasCommentsOnly, onlyWatched, includeArchived, listSort.sort, tagFilter.query, projectScope.scope,
   ]);
 
@@ -433,6 +442,10 @@ export function RequirementsPage() {
       key: "placement", label: "Component · category", sortable: true, optional: true, chooserLabel: "Component and category",
       render: (r) => <span className="text-muted">{r.from_project_id ? "—" : `${componentName(r.component_id)} · ${categoryName(r.category_id)}`}</span>,
     },
+    {
+      key: "type", label: strings.requirements.type, sortable: true, optional: true,
+      render: (r) => <span className="text-muted">{r.type_name ?? "—"}</span>,
+    },
     ...(showReferences
       ? [{
           key: "references", label: strings.references.column, sortable: true, optional: true,
@@ -505,6 +518,14 @@ export function RequirementsPage() {
               onChange={setPhaseFilter}
               allLabel={strings.requirements.allPhases}
               options={phaseNames.map((name) => ({ value: name, label: name }))}
+            />
+            <FilterSelect
+              label={strings.requirements.type}
+              help={strings.requirements.typeFilterHelp}
+              value={typeFilter}
+              onChange={setTypeFilter}
+              allLabel={strings.requirements.allTypes}
+              options={requirementTypes.map((type) => ({ value: type.name, label: type.name }))}
             />
             {/* C-G-11: completion is now an independent overlay marker, not a
                 status value — a separate checkbox alongside the Status
@@ -678,7 +699,7 @@ export function RequirementsPage() {
                       {r.from_project_id ? "—" : `${componentName(r.component_id)} · ${categoryName(r.category_id)}`}
                     </div>
                     <div className="text-muted" style={{ fontSize: "0.8rem" }}>
-                      Target: {targetText(r)} · Level: {REQUIREMENT_LEVEL_LABEL[r.level]}
+                      Target: {targetText(r)} · Level: {REQUIREMENT_LEVEL_LABEL[r.level]}{r.type_name ? ` · ${strings.requirements.type}: ${r.type_name}` : ""}
                     </div>
                   </TileCard>
                 ))}

@@ -3,6 +3,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, userEvent, within } from "storybook/test";
 
 import type { OrgUser, ProjectStage } from "../api/types";
+import { buildRequirementTypes } from "../testing/storybook-helpers";
 import { FormGrid } from "./FormGrid";
 import { RequirementFields } from "./RequirementFields";
 import { EMPTY_REQUIREMENT_FIELDS, type RequirementFieldValues } from "./requirementFieldValues";
@@ -24,7 +25,7 @@ function Harness({ initial }: { initial: RequirementFieldValues }) {
   return (
     <FormGrid minColumn="18rem">
       <RequirementFields
-        values={values} onChange={setValues} stages={stages} orgUsers={users}
+        values={values} onChange={setValues} stages={stages} requirementTypes={buildRequirementTypes()} orgUsers={users}
         ownerPlaceholder="Defaults to you" afterDescription={<p data-testid="page-fields">Page-specific fields</p>}
       />
       <output data-testid="values">{JSON.stringify(values)}</output>
@@ -62,6 +63,19 @@ export const EditsClarificationAndReviewFields: Story = {
     const values = JSON.parse(canvas.getByTestId("values").textContent ?? "{}");
     await expect(values.clarification).toBe("Applies to field staff");
     await expect(values.reviewLeadDays).toBe("14");
+  },
+};
+
+/** The Type field offers the project's types, may stay empty and writes the chosen entry's id into the value set. */
+export const ChoosesARequirementType: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const select = canvas.getByRole("combobox", { name: "Type" });
+    await expect(within(select).getByRole("option", { name: "No type" })).toBeInTheDocument();
+    await userEvent.selectOptions(select, "Business Requirement");
+    await expect(JSON.parse(canvas.getByTestId("values").textContent ?? "{}").typeId).toBe("requirement-type-1");
+    await userEvent.selectOptions(select, "");
+    await expect(JSON.parse(canvas.getByTestId("values").textContent ?? "{}").typeId).toBe("");
   },
 };
 

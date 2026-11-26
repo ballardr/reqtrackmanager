@@ -76,6 +76,7 @@ from app.routers import (
     report_snippets,
     reports,
     requirement_aliases,
+    requirement_types,
     requirements,
     reviews,
     scim,
@@ -404,6 +405,8 @@ app.include_router(code_prefixes.org_router)
 app.include_router(code_prefixes.project_router)
 app.include_router(external_systems.org_router)
 app.include_router(external_systems.project_router)
+app.include_router(requirement_types.org_router)
+app.include_router(requirement_types.project_router)
 app.include_router(external_references.router)
 app.include_router(external_references.project_router)
 app.include_router(stage_workflows.org_router)

@@ -34,6 +34,7 @@ from app.models.organization import Organization
 from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
 from app.models.requirement import Requirement, RequirementVersion
 from app.models.requirement_alias import RequirementAlias
+from app.models.requirement_type import ProjectRequirementType, RequirementTypeDefinition
 from app.models.user import User
 from app.modules.registry import ArtefactChange
 from app.schemas.principal import PrincipalOut, PrincipalRef
@@ -46,6 +47,8 @@ from app.services.list_sort import apply_direction, code_order_columns, instant,
 from app.services.lookups import present, project_or_404
 from app.services.principals import principal_columns, principal_labels, principal_ref, validate_principal
 from app.services.rbac import lock_project_for_update, lock_row_for_update
+from app.services.requirement_types import matching_type_row_ids, resolve_requirement_type
+from app.services.requirement_types import type_names as requirement_type_names
 
 if TYPE_CHECKING:
     from app.services.placements import PlacementPair
@@ -155,6 +158,18 @@ def version_people(db: Session, versions: Iterable[RequirementVersion]) -> dict[
     return principal_labels(db, refs)
 
 
+def resolve_type_or_422(db: Session, project: Project, type_id: UUID | None) -> UUID | None:
+    """`services.requirement_types.resolve_requirement_type` for a request: the project type row to store.
+
+    Raises:
+        HTTPException: 422 when `type_id` is not an enabled requirement type of the project.
+    """
+    try:
+        return resolve_requirement_type(db, project, type_id)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+
+
 def create_requirement(
     db: Session,
     project: Project,
@@ -176,6 +191,8 @@ def create_requirement(
     review_date: date | None = None,
     review_lead_days: int | None = None,
     reviewer: PrincipalRef | None = None,
+    type_id: UUID | None = None,
+    project_type_id: UUID | None = None,
     unique_code: str | None = None,
     change_note: str = "Initial creation.",
 ) -> Requirement:
@@ -191,12 +208,16 @@ def create_requirement(
             falsifying the audit trail of who technically made the request.
         owner: The responsible principal (the caller has validated it); the creator when omitted.
         reviewer: The principal accountable for the scheduled review, or None.
+        type_id: The requirement type chosen from the project's list (`services.requirement_types`), or None.
+        project_type_id: A project type row already stored on another requirement (a copy keeps the original's type
+            even when the project has since disabled it); used when `type_id` is not given.
         unique_code: A code already issued for this requirement (an alias code taken over when the alias is made
             independent); a fresh code is numbered from the project counter when omitted.
         change_note: The first version's note.
     """
     if review_date is not None:
         check_review_date_policy(db, project.id, review_date)
+    project_type_id = resolve_type_or_422(db, project, type_id) if type_id is not None else project_type_id
     unique_code = unique_code or generate_unique_code(db, project, component, category)
     requirement = Requirement(
         project_id=project.id, component_id=component.id, category_id=category.id,
@@ -211,7 +232,7 @@ def create_requirement(
         name=name, reasoning=reasoning, clarification=clarification, description=description,
         status=RequirementStatus.DRAFT,
         **principal_columns("owner", owner or PrincipalRef(type=PrincipalType.USER, id=creator.id)),
-        target_stage_id=target_stage_id, level=level,
+        target_stage_id=target_stage_id, level=level, project_type_id=project_type_id,
         sort_order=sort_order, created_by=creator.id, created_at=now,
         change_note=change_note, custom_fields=custom_fields or {},
         review_date=review_date, review_lead_days=review_lead_days, **principal_columns("reviewer", reviewer),
@@ -302,6 +323,8 @@ def apply_new_version(
     review_lead_days_explicitly_set: bool = False,
     reviewer: PrincipalRef | None = None,
     reviewer_explicitly_set: bool = False,
+    project_type_id: UUID | None = None,
+    project_type_explicitly_set: bool = False,
 ) -> RequirementVersion:
     """Closes the current version and inserts a new one with the given changes.
 
@@ -310,7 +333,8 @@ def apply_new_version(
     `target_stage_id` (and, per C-R-06, the review-scheduling fields) are
     nullable in the schema, so their `*_explicitly_set` flags disambiguate
     "clear this field" (pass the value as None with the flag True) from
-    "leave it unchanged" (the flag stays False).
+    "leave it unchanged" (the flag stays False). `project_type_id` is a project type row (resolve a payload's id with
+    `resolve_type_or_422` first) and follows the same flag rule.
 
     `owner` and `reviewer` are principals (the caller has validated them); `reviewer`, like the other
     nullable fields, is cleared by passing None with `reviewer_explicitly_set`.
@@ -348,6 +372,7 @@ def apply_new_version(
         ),
         target_stage_id=target_stage_id if target_stage_explicitly_set else current_version.target_stage_id,
         level=level if level is not None else current_version.level,
+        project_type_id=project_type_id if project_type_explicitly_set else current_version.project_type_id,
         approval_authority_id=actor.id if status_value == RequirementStatus.APPROVED else current_version.approval_authority_id,
         sort_order=current_version.sort_order,
         change_request_id=change_request_id,
@@ -436,6 +461,7 @@ class ListPrefetch:
         open_change_request: Requirement ids with an open change request.
         people: Resolved owner and reviewer (`services.principals.principal_labels`), keyed by `(type, id)`.
         aliases: Active aliases per requirement id (absent = none).
+        type_names: The requirement type name per project type row id the versions reference.
     """
 
     versions: dict[UUID, RequirementVersion] = field(default_factory=dict)
@@ -445,6 +471,7 @@ class ListPrefetch:
     open_change_request: set[UUID] = field(default_factory=set)
     people: dict[tuple[str, UUID], PrincipalOut] = field(default_factory=dict)
     aliases: dict[UUID, list[RequirementAlias]] = field(default_factory=dict)
+    type_names: dict[UUID, str] = field(default_factory=dict)
 
 
 def prefetch_for_list(db: Session, requirement_ids: list[UUID], current_user_id: UUID) -> ListPrefetch:
@@ -464,6 +491,7 @@ def prefetch_for_list(db: Session, requirement_ids: list[UUID], current_user_id:
     if len(prefetch.versions) != len(set(requirement_ids)):
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Requirement has no current version.")
     prefetch.people = version_people(db, prefetch.versions.values())
+    prefetch.type_names = requirement_type_names(db, [v.project_type_id for v in prefetch.versions.values()])
     prefetch.keywords = tag_service.keywords_for_requirements(db, requirement_ids)
     for alias in db.scalars(
         select(RequirementAlias)
@@ -502,6 +530,7 @@ class RequirementFilters:
     tag_match_all: bool = False
     external_systems: tuple[str, ...] = ()
     external_key: str | None = None
+    type_names: tuple[str, ...] = ()
     keyword: str | None = None
     search: str | None = None
     status: RequirementStatus | None = None
@@ -612,10 +641,11 @@ _CANONICAL_TO_COLUMN = {"code": "unique_code", "title": "name", "created": "crea
 
 #: Sorts whose value comes from tables the row query joins (the target stage, the component and category), read as
 #: `ListRow.order_value`; `references` is ordered by the caller from the references' text (`ROW_TEXT_SORTS`).
-ROW_ORDER_COLUMNS = ("target", "placement")
+ROW_ORDER_COLUMNS = ("target", "placement", "type")
 ROW_TEXT_SORTS = ("references",)
 """The extra keys `GET .../requirements?sort=` accepts: `target` (the target stage's position, then the level), `placement`
-(the component's then the category's name) and `references` (the first external reference's system and key)."""
+(the component's then the category's name), `type` (the requirement type's rank, then its place in the list, then its name;
+unranked types after ranked ones and an untyped requirement last) and `references` (the first external reference's system and key)."""
 
 _LEVEL_RANK = case(
     (RequirementVersion.level == RequirementLevel.REQUIREMENT, 0),
@@ -632,6 +662,16 @@ def _row_order_expression(sort: str | None) -> ColumnElement[Any] | None:
         return ProjectStage.sort_order * 10 + _LEVEL_RANK
     if sort == "placement":
         return func.lower(ProjectComponent.name) + "\x01" + func.lower(ProjectCategory.name)
+    if sort == "type":
+        rank = func.coalesce(ProjectRequirementType.rank, RequirementTypeDefinition.rank)
+        position = func.coalesce(ProjectRequirementType.display_order_override, RequirementTypeDefinition.sort_order)
+        name = func.coalesce(ProjectRequirementType.name_override, RequirementTypeDefinition.name)
+        # An unranked type sorts after every ranked one, and an untyped requirement after every typed one.
+        return func.coalesce(
+            func.lpad(cast(func.coalesce(rank, 999999), String), 6, "0") + "\x01"
+            + func.lpad(cast(position, String), 6, "0") + "\x01" + func.lower(name),
+            "\x7f",
+        )
     return None
 
 
@@ -664,7 +704,7 @@ def _sql_order(sort: str | None, descending: bool) -> list:
     column_key = list_sort_column(sort)
     row_order = _row_order_expression(sort)
     if row_order is not None:
-        keys = apply_direction([row_order.collate("C") if sort == "placement" else row_order], descending)
+        keys = apply_direction([row_order.collate("C") if sort in ("placement", "type") else row_order], descending)
     elif column_key is None:
         keys = [ProjectComponent.sort_order, ProjectCategory.sort_order, RequirementVersion.sort_order]
     else:
@@ -744,6 +784,8 @@ def filter_requirement_rows(
             db, project_or_404(db, project_id).organization_id, "requirement", Requirement.id,
             filters.external_systems, filters.external_key,
         ))
+    if filters.type_names:
+        conditions.append(RequirementVersion.project_type_id.in_(matching_type_row_ids(db, project_id, filters.type_names)))
     if filters.target_stage_id:
         conditions.append(RequirementVersion.target_stage_id == filters.target_stage_id)
     stage_range = _stage_range(db, project_id, filters)
@@ -783,13 +825,20 @@ def filter_requirement_rows(
             )
         if sort == "target":
             query = query.outerjoin(ProjectStage, ProjectStage.id == RequirementVersion.target_stage_id)
+        if sort == "type":
+            query = query.outerjoin(
+                ProjectRequirementType, ProjectRequirementType.id == RequirementVersion.project_type_id,
+            ).outerjoin(RequirementTypeDefinition, RequirementTypeDefinition.id == ProjectRequirementType.org_type_id)
         return query.where(*conditions)
 
     def matching_count() -> int:
         """How many requirements match, counted from the requirement table alone unless a filter reads the version
         (status, stage, text): the version and the component and category joins only order and label the page."""
         query = select(func.count()).select_from(Requirement)
-        if filters.status or filters.target_stage_id or stage_range is not None or filters.search or filters.phase:
+        if (
+            filters.status or filters.target_stage_id or stage_range is not None or filters.search or filters.phase
+            or filters.type_names
+        ):
             query = query.outerjoin(RequirementVersion, and_(
                 RequirementVersion.requirement_id == Requirement.id, RequirementVersion.valid_to.is_(None),
             ))
@@ -894,6 +943,8 @@ def edit_requirement(
     category_id: UUID | None = None,
     keywords: list[str] | None = None,
     additional_places: Sequence[PlacementPair] | None = None,
+    type_id: UUID | None = None,
+    type_explicitly_set: bool = False,
 ) -> RequirementVersion:
     """A direct edit of a requirement: the version lock, validation and new version the edit endpoint applies.
 
@@ -911,6 +962,8 @@ def edit_requirement(
         keywords: Replace the keyword set, or `None` to leave it.
         additional_places: Make the requirement sit in exactly these further places, each with its own alias
             code (`services.requirement_aliases.set_aliases`), or `None` to leave them.
+        type_id / type_explicitly_set: The type chosen from the project's list; `None` with the flag clears it, and
+            without the flag the type is left as it is.
 
     Returns:
         The new version.
@@ -927,6 +980,10 @@ def edit_requirement(
         raise HTTPException(status.HTTP_409_CONFLICT, "This requirement is approved; changes must be made via a change request.")
     if status_value is not None:
         check_status_move(db, project.id, requirement.id, current_version.status, status_value)
+    if type_explicitly_set and type_id is not None and type_id == current_version.project_type_id:
+        # The type already held (an unrelated edit sends it back): kept as it is, even if the project has since
+        # disabled or hidden it, so only choosing a different type is checked against the project's list.
+        type_explicitly_set = False
     validated = (
         validate_custom_field_values(db, project.id, CustomFieldEntityKind.REQUIREMENT, custom_fields)
         if custom_fields is not None else None
@@ -942,6 +999,8 @@ def edit_requirement(
         review_date=review_date, review_date_explicitly_set=review_date_explicitly_set,
         review_lead_days=review_lead_days, review_lead_days_explicitly_set=review_lead_days_explicitly_set,
         reviewer=reviewer, reviewer_explicitly_set=reviewer_explicitly_set,
+        project_type_id=resolve_type_or_422(db, project, type_id) if type_explicitly_set else None,
+        project_type_explicitly_set=type_explicitly_set,
     )
     if component_id is not None and category_id is not None and (
         component_id != requirement.component_id or category_id != requirement.category_id

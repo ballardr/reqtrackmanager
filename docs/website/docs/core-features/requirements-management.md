@@ -15,6 +15,25 @@ Open a project's **Requirements** page (or click **New requirement** on the proj
 
 While the project's current stage is still in scoping, requirements within a component/category can be **reordered** with up/down arrows.
 
+## Requirement types
+
+A requirement can have a **type**, the kind of requirement it is. A new organisation starts with Business Requirement, Stakeholder Requirement and Project Requirement, and a requirement may also have no type. Choose it with the **Type** field on the create and edit forms; the **Type** filter, the optional **Type** column and the **Sort by** field of the Requirements list use it, and Export and Import carry it as the **Type** column.
+
+The list has two tiers, as other administered lists do:
+
+```mermaid
+flowchart LR
+    O["Organisation list<br/>Organisation Admin"] --> P["Project view<br/>Project Admin"]
+    P --> R["Requirement<br/>Type field"]
+    A["Parent project<br/>configured list"] -. "used when the project has no changes of its own" .-> P
+```
+
+- An organisation administrator adds, renames, reorders, disables and removes types under **Organisation Admin → Projects → Requirement types**. A type that a requirement still uses cannot be removed; disable it instead.
+- A project administrator adjusts the list under **Project Admin → Fields & actions → Requirement types**: rename or reorder an organisation type, disable it, add a type of its own, or hide an organisation type and restore it later. A sub-project with no changes of its own shows its parent project's list; its first change copies that list into the sub-project.
+- A disabled or hidden type stays on the requirements that already have it, and cannot be chosen again.
+
+The type is part of a requirement's content, so it appears in the version history. Changing the type of an approved requirement goes through a [change request](./change-requests.md): choose **Type** among the fields to change. Each type also has a **Rank**, its priority: a lower number is higher priority (1 is the top), types with the same rank are peers, and a type with no rank sorts last. The rank, not the order of the list, decides **Sort by Type**, and report layouts can sort by it. In a project, leave the rank empty to use the organisation's. Which type must link to which is the job of traceability rules, which can use the rank.
+
 ## The requirement detail page
 
 Opening a requirement shows its full detail: name, reasoning, clarification, description, custom field values, an editable form (disabled once locked), its **Versions** table — including who made each change — a discussion thread, file attachments, and, beside the content, the Links and Activity tabs (see [One record's timeline](../workflows/files-comments-and-history.md#one-records-timeline)).

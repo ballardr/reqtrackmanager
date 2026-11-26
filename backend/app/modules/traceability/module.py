@@ -12,7 +12,7 @@ Registered contributions:
   results, live or from a snapshot; the hourly `health_snapshots` job refreshes interval snapshots. MCP tools and guidance
   (`mcp_tools`, `mcp_guidance.md`) configure governance and read the health.
 - Sub-components: Governance (`lifecycle_policies`, `approval_policies`, `review_policies`, `baseline_policies`,
-  `governance_health`) and Traceability (`requirement_types`, `traceability_rules`, `traceability_exceptions`,
+  `governance_health`) and Traceability (`traceability_rules`, `traceability_exceptions`,
   `traceability_matrices`, `cross_project_traceability`). An exception and cross-project traceability `require`
   `traceability_rules`: they have no effect while it is off, and their settings are kept.
 - `administrative_permissions`: `manage_org_governance`, `manage_project_governance`, `manage_org_traceability`,
@@ -88,7 +88,6 @@ from app.modules.traceability._shared import (
     MANAGE_ORG_TRACEABILITY,
     MANAGE_PROJECT_GOVERNANCE,
     MANAGE_PROJECT_TRACEABILITY,
-    REQUIREMENT_TYPES,
     REVIEW_POLICIES,
     TRACEABILITY_EXCEPTIONS,
     TRACEABILITY_MANAGER_ROLE,
@@ -125,8 +124,8 @@ MODULE_DEFINITION = ModuleDefinition(
     name="Traceability & Governance",
     description=(
         "Governance: lifecycle, approval, review and baseline policy per record type, set by the organisation as "
-        "profiles that can be enforced, defaulted or opted into, with a health view. Traceability: requirement types "
-        "and rules for which links a record must carry, with status, exceptions, cross-project reach and matrices."
+        "profiles that can be enforced, defaulted or opted into, with a health view. Traceability: rules for "
+        "which links a record must carry, with status, exceptions, cross-project reach and matrices."
     ),
     version="0.1.0",
     default_enabled=False,
@@ -165,7 +164,6 @@ MODULE_DEFINITION = ModuleDefinition(
         ModuleSubComponentDefinition(key=REVIEW_POLICIES, name="Review policies"),
         ModuleSubComponentDefinition(key=BASELINE_POLICIES, name="Baseline policies"),
         ModuleSubComponentDefinition(key=GOVERNANCE_HEALTH, name="Governance health"),
-        ModuleSubComponentDefinition(key=REQUIREMENT_TYPES, name="Requirement types"),
         ModuleSubComponentDefinition(key=TRACEABILITY_RULES, name="Traceability rules"),
         ModuleSubComponentDefinition(
             key=TRACEABILITY_EXCEPTIONS, name="Traceability exceptions", requires=(TRACEABILITY_RULES,),
@@ -281,13 +279,13 @@ MODULE_DEFINITION = ModuleDefinition(
         ),
         ModuleRoleDefinition(
             role_key=TRACEABILITY_MANAGER_ROLE, name="Traceability Manager",
-            description="Manages the project's requirement types, traceability rules, enforcement levels and matrices.",
+            description="Manages the project's traceability rules, enforcement levels and matrices.",
             scope="project", permissions=(MANAGE_PROJECT_TRACEABILITY,),
         ),
         ModuleRoleDefinition(
             role_key=TRACEABILITY_ORG_MANAGER_ROLE, name="Organisation Traceability Manager",
             description=(
-                "Manages the organisation's requirement types, rules and matrix definitions, and the traceability "
+                "Manages the organisation's rules and matrix definitions, and the traceability "
                 "configuration of every project."
             ),
             scope="org", permissions=(MANAGE_ORG_TRACEABILITY, MANAGE_PROJECT_TRACEABILITY),
