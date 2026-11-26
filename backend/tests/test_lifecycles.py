@@ -334,6 +334,7 @@ def test_organisation_endpoints_validate_and_reach_only_their_own_organisation(c
     assert listing.status_code == 200
     assert {x["artefact_type"] for x in listing.json()} == {
             "requirement", "pain_point", "open_question", "strategy", "future_state", "guiding_principle",
+            "project_stage", "component_stage",
         }
     assert other_org["id"] != org["id"]
 

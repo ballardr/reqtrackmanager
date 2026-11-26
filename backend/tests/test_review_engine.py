@@ -16,7 +16,7 @@ from app.database import SessionLocal
 from app.models.notification import NotificationType
 from app.models.requirement import Requirement, RequirementReview, RequirementVersion
 from app.modules import registry
-from app.modules.seams import DueReview, ReviewAdapter, ReviewPolicy, ReviewReminder
+from app.modules.seams import DueReview, ReminderMark, ReviewAdapter, ReviewPolicy, ReviewReminder
 from app.services import review_engine
 from app.services.reviews import get_due_reviews_for_project, send_due_review_reminders
 from tests.conftest import auth_headers, create_component_and_category, create_org_user, create_project, login
@@ -237,7 +237,7 @@ def test_a_type_that_stores_its_next_review_date_runs_through_the_same_engine(cl
                 code="DEMO-001", owner=None,
             ),
         ] if not marked else [],
-        mark_reminded=lambda db, ids, when: marked.extend(ids),
+        mark_reminded=lambda db, marks, when: marked.extend(m.artefact_id for m in marks),
         notification_type=NotificationType.REQUIREMENT_REVIEW_DUE.value,
     )
     real = registry.get_review_adapters
@@ -276,3 +276,59 @@ def test_the_requirement_keeps_its_reminder_body_and_title(client, admin_token, 
     assert row["title"] == "Review due: Pump limits"
     assert row["body"] == f"{project['code']}-{requirement['unique_code']} is due for review by {(TODAY + timedelta(days=2)).isoformat()}."
     assert row["entity_type"] == "requirement"
+
+
+def test_an_adapter_with_an_overdue_type_sends_one_due_and_one_overdue_reminder_per_date(client, admin_token, org_id, monkeypatch):
+    project = _world(client, admin_token, org_id)
+    token = admin_token
+    record_id = uuid.uuid4()
+    due_on = TODAY - timedelta(days=2)
+    state: dict[str, date | None] = {"due": None, "overdue": None}
+    seen: list[tuple[str, bool]] = []
+
+    def mark(db, marks: list[ReminderMark], when):
+        for m in marks:
+            state["overdue" if m.overdue else "due"] = m.due_on
+
+    adapter = ReviewAdapter(
+        schedule="next_review_date",
+        due_reviews=lambda db, project_id, as_of: [],
+        pending_reminders=lambda db: [
+            ReviewReminder(
+                artefact_id=record_id, project_id=uuid.UUID(project["id"]), due_on=due_on, title="Two stage", code="DEMO-002",
+                reminded_for=state["due"], overdue_reminded_for=state["overdue"],
+            ),
+        ],
+        mark_reminded=mark,
+        notification_type=NotificationType.REQUIREMENT_REVIEW_DUE.value,
+        overdue_notification_type="requirement_review_due",
+        message=lambda reminder, overdue: (seen.append((reminder.code, overdue)) or ("T", "overdue" if overdue else "due")),
+        fallback_recipients=lambda db, reminder: {u for u in review_engine.get_effective_project_managers(db, reminder.project_id)},
+    )
+    real = registry.get_review_adapters
+    monkeypatch.setattr(registry, "get_review_adapters", lambda: {**real(), "two_stage": ("", adapter)})
+
+    assert _sweep(TODAY) == 1  # past its date: the overdue reminder, not a "due" one
+    assert seen == [("DEMO-002", True)]
+    assert state == {"due": None, "overdue": due_on}
+    assert _sweep(TODAY) == 0
+    rows = client.get("/api/v1/notifications", headers=auth_headers(token)).json()
+    assert [r["body"] for r in rows if r["entity_id"] == str(record_id)] == ["overdue"]  # the project manager, by the fallback
+
+
+def test_an_adapters_sub_component_must_be_effective_for_it_to_apply(client, admin_token, org_id, monkeypatch):
+    project = _world(client, admin_token, org_id)
+    record_id = uuid.uuid4()
+    adapter = ReviewAdapter(
+        schedule="next_review_date", due_reviews=lambda db, project_id, as_of: [DueReview(record_id, TODAY)],
+        sub_component="no_such_part",
+    )
+    real = registry.get_review_adapters
+    monkeypatch.setattr(registry, "get_review_adapters", lambda: {**real(), "gated": ("risk_management", adapter)})
+    with SessionLocal() as db:
+        assert [t for t, _ in review_engine.due_reviews(db, uuid.UUID(project["id"]), TODAY)] == []
+
+
+def test_an_adapter_that_sends_no_reminders_cannot_set_reminder_options():
+    with pytest.raises(ValueError, match="sends no reminders"):
+        ReviewAdapter(schedule="review_record", due_reviews=lambda db, project_id, as_of: [], overdue_notification_type="x")

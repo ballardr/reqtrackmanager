@@ -68,6 +68,7 @@ from app.services.audit import log_event
 from app.services.current_versions import current_versions, primed_current_version
 from app.services.external_references import forget_record_references
 from app.services.files import delete_file
+from app.services.lifecycles import check_move
 from app.services.link_types import ensure_org_link_type
 from app.services.lookups import get_or_404
 from app.services.placements import forget_record_placements
@@ -261,6 +262,7 @@ def transition_persona(
     """
     if new_status not in PERSONA_ALLOWED_TRANSITIONS[current_version.status]:
         raise ValueError(f"Cannot move a Persona from '{current_version.status.value}' to '{new_status.value}'.")
+    check_move(db, persona.project_id, PERSONA_ARTEFACT_TYPE, current_version.status.value, new_status.value, record_id=persona.id)
     new_version = apply_persona_new_version(
         db, persona, current_version, actor, changes={"status": new_status}, change_note=comment or "",
     )
@@ -617,6 +619,10 @@ def transition_stakeholder(
         raise ValueError(
             f"Cannot move a Stakeholder from '{current_version.status.value}' to '{new_status.value}'."
         )
+    check_move(
+        db, stakeholder.project_id, STAKEHOLDER_ARTEFACT_TYPE, current_version.status.value, new_status.value,
+        record_id=stakeholder.id,
+    )
     new_version = apply_stakeholder_new_version(
         db, stakeholder, current_version, actor, changes={"status": new_status}, change_note=comment or "",
     )
@@ -1092,6 +1098,7 @@ def transition_need(
         raise ValueError(
             f"Cannot move a Stakeholder Need from '{current_version.status.value}' to '{new_status.value}'."
         )
+    check_move(db, need.project_id, NEED_ARTEFACT_TYPE, current_version.status.value, new_status.value, record_id=need.id)
     new_version = apply_need_new_version(
         db, need, current_version, actor, changes={"status": new_status}, change_note=comment or "",
     )

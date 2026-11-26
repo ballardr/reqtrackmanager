@@ -10,6 +10,7 @@ Responsibilities:
   module answers.
 - `due_reviews`: every record of a project whose review is due, across the adapters in effect.
 - `send_review_reminders`: the one daily sweep over every adapter that hands over its reminders.
+- `may_review_as_default_owner`: whether the policy's default owner may record the review of a record that has no reviewer.
 - Scheduling rules a type applies when it records a review: `next_due_date` and `check_next_review_date` (the policy's
   interval), `reminder_lead_days` and `reminder_open` (when a reminder is due).
 
@@ -19,8 +20,10 @@ Design decisions:
 - A due date is a calendar date (a person's own day). An interactive caller compares it with
   `client_date.effective_today()`; the sweep has no caller, so it compares with the UTC date, which is at most a day from
   any person's day, and sends each reminder once per due date.
-- The reminder goes to the record's own reviewer (every active member of a group), else the policy's default owner, else the
-  project managers, so a due review never goes unannounced.
+- The reminder goes to the record's own reviewer (every active member of a group), else the policy's default owner, else
+  the adapter's fallback (the project managers by default), so a due review never goes unannounced.
+- A type with a separate "overdue" notice (`ReviewAdapter.overdue_notification_type`) gets one "due" and one "overdue"
+  reminder per due date; a type without one gets a single reminder per due date.
 - An interval is the longest gap, never a fixed schedule: a type that stores the next review date stays free to set an
   earlier one.
 
@@ -39,9 +42,9 @@ from sqlalchemy.orm import Session
 from app.models.project import Project
 from app.models.user import User
 from app.modules import registry
-from app.modules.seams import DueReview, GovernanceSeam, ReviewPolicy, ReviewReminder
+from app.modules.seams import DueReview, GovernanceSeam, ReminderMark, ReviewAdapter, ReviewPolicy, ReviewReminder
 from app.services import governance_seams, notifications
-from app.services.principals import principal_recipients
+from app.services.principals import PrincipalRef, is_principal_member, principal_recipients
 from app.services.rbac import get_effective_project_managers
 
 DEFAULT_REMINDER_LEAD_DAYS = 7
@@ -140,24 +143,65 @@ def due_reviews(db: Session, project_id: uuid.UUID, as_of: date) -> list[tuple[s
 
 
 def _recipients(
-    db: Session, reminder: ReviewReminder, policy: ReviewPolicy, managers: dict[uuid.UUID, set[uuid.UUID]],
+    db: Session, adapter: ReviewAdapter, reminder: ReviewReminder, policy: ReviewPolicy,
+    managers: dict[uuid.UUID, set[uuid.UUID]],
 ) -> set[uuid.UUID]:
-    """Who hears about a due review: its own reviewer, else the policy's default owner, else the project managers
-    (read once per project through `managers`)."""
+    """Who hears about a due review: its own reviewer, else the policy's default owner, else the adapter's fallback, else
+    the project managers (read once per project through `managers`; a record with no project has none), plus anyone the
+    adapter always adds."""
     recipients = principal_recipients(db, [reminder.owner]) or principal_recipients(db, [policy.default_owner])
-    if recipients:
-        return recipients
-    if reminder.project_id not in managers:
-        managers[reminder.project_id] = get_effective_project_managers(db, reminder.project_id)
-    return managers[reminder.project_id]
+    if not recipients:
+        if adapter.fallback_recipients is not None:
+            recipients = adapter.fallback_recipients(db, reminder)
+        elif reminder.project_id is not None:
+            if reminder.project_id not in managers:
+                managers[reminder.project_id] = get_effective_project_managers(db, reminder.project_id)
+            recipients = managers[reminder.project_id]
+    if adapter.also_notify is not None:
+        recipients = recipients | adapter.also_notify(db, reminder)
+    return recipients
+
+
+def may_review_as_default_owner(
+    db: Session, user_id: uuid.UUID, project_id: uuid.UUID, artefact_type: str, record_reviewer: PrincipalRef | None,
+) -> bool:
+    """Whether the policy's default owner admits `user_id` to record the review of a record.
+
+    The default owner stands in only for a record with no reviewer of its own, so it never narrows or replaces a reviewer a
+    record names. It grants the right to record the review and nothing else.
+
+    Args:
+        db: An active database session.
+        user_id: The person.
+        project_id: The record's project.
+        artefact_type: The registered record type.
+        record_reviewer: The record's own reviewer (or owner, for a type whose owner reviews), `None` when it has none.
+
+    Returns:
+        `True` when the record has no reviewer and the person is the policy's default owner or an effective member of it.
+    """
+    if record_reviewer is not None:
+        return False
+    return is_principal_member(db, review_policy(db, project_id, artefact_type).default_owner, user_id)
+
+
+def _message(adapter: ReviewAdapter, reminder: ReviewReminder, overdue: bool) -> tuple[str, str]:
+    """The notification `(title, body)` of a reminder: the adapter's wording, else the engine's."""
+    if adapter.message is not None:
+        return adapter.message(reminder, overdue)
+    return (
+        f"Review due: {reminder.title}",
+        f"{reminder.code} is due for review by {reminder.due_on.isoformat()}.",
+    )
 
 
 def send_review_reminders(db: Session, today: date | None = None) -> int:
     """The daily reminder sweep over every adapter that hands over its reminders.
 
-    For each record whose reminder window has opened and that has not been reminded for its current due date, notifies its
-    reviewer (every active member of a reviewer group), else the policy's default owner, else the project managers, and
-    records that the reminder was sent. A project where the adapter's module is off is skipped. Commits once at the end.
+    For each record whose reminder window has opened and that has not been reminded for its current due date (separately
+    for "due" and "overdue" where the type has both), notifies its reviewer (every active member of a reviewer group), else
+    the policy's default owner, else the adapter's fallback or the project managers, and records that the reminder was
+    sent. A project where the adapter's module or sub-component is off is skipped. Commits once at the end.
 
     Args:
         db: An active database session.
@@ -169,34 +213,50 @@ def send_review_reminders(db: Session, today: date | None = None) -> int:
     today = today or datetime.now(UTC).date()
     now = datetime.now(UTC)
     reminded = 0
-    lead_defaults: dict[uuid.UUID, int | None] = {}
     for artefact_type, (module_key, adapter) in sorted(registry.get_review_adapters().items()):
         if adapter.pending_reminders is None or adapter.mark_reminded is None or adapter.notification_type is None:
             continue
         active: dict[uuid.UUID, bool] = {}
+        lead_defaults: dict[uuid.UUID, int | None] = {}
         policies: dict[uuid.UUID, ReviewPolicy] = {}
         managers: dict[uuid.UUID, set[uuid.UUID]] = {}
-        sent: list[uuid.UUID] = []
+        sent: list[ReminderMark] = []
         for reminder in adapter.pending_reminders(db):
             project_id = reminder.project_id
-            if project_id not in active:
-                active[project_id] = governance_seams.registration_active(db, project_id, module_key, None)
-                policies[project_id] = review_policy(db, project_id, artefact_type) if active[project_id] else ReviewPolicy()
-            if not active[project_id]:
+            scope = project_id or reminder.organization_id
+            if scope is None:
                 continue
-            if project_id not in lead_defaults:
-                lead_defaults[project_id] = db.scalar(select(Project.review_reminder_lead_days_default).where(Project.id == project_id))
-            lead = reminder_lead_days(reminder.lead_days, policies[project_id], lead_defaults[project_id])
+            if scope not in active:
+                if project_id is not None:
+                    active[scope] = governance_seams.registration_active(db, project_id, module_key, adapter.sub_component)
+                    policies[scope] = review_policy(db, project_id, artefact_type) if active[scope] else ReviewPolicy()
+                else:
+                    active[scope] = module_key == "" or registry.is_module_enabled(db, scope, module_key)
+                    policies[scope] = ReviewPolicy()
+            if not active[scope]:
+                continue
+            overdue = adapter.overdue_notification_type is not None and reminder.due_on < today
+            if (reminder.overdue_reminded_for if overdue else reminder.reminded_for) == reminder.due_on:
+                continue
+            if scope not in lead_defaults:
+                lead_defaults[scope] = (
+                    adapter.default_lead_days if adapter.default_lead_days is not None
+                    else db.scalar(select(Project.review_reminder_lead_days_default).where(Project.id == project_id))
+                    if project_id is not None else None
+                )
+            lead = reminder_lead_days(reminder.lead_days, policies[scope], lead_defaults[scope])
             if not reminder_open(reminder.due_on, lead, today):
                 continue
-            recipient_ids = _recipients(db, reminder, policies[project_id], managers)
+            recipient_ids = _recipients(db, adapter, reminder, policies[scope], managers)
+            title, body = _message(adapter, reminder, overdue)
+            kind = adapter.overdue_notification_type if overdue and adapter.overdue_notification_type else adapter.notification_type
+            entity_type, entity_id = reminder.entity or (artefact_type, str(reminder.artefact_id))
             for user in db.scalars(select(User).where(User.id.in_(recipient_ids))) if recipient_ids else ():
                 notifications.notify(
-                    db, user, notification_type=adapter.notification_type, title=f"Review due: {reminder.title}",
-                    body=f"{reminder.code} is due for review by {reminder.due_on.isoformat()}.",
-                    project_id=project_id, entity_type=artefact_type, entity_id=str(reminder.artefact_id),
+                    db, user, notification_type=kind, title=title, body=body, project_id=project_id,
+                    entity_type=entity_type, entity_id=entity_id,
                 )
-            sent.append(reminder.artefact_id)
+            sent.append(ReminderMark(reminder.artefact_id, reminder.due_on, overdue))
         if sent:
             adapter.mark_reminded(db, sent, now)
             reminded += len(sent)

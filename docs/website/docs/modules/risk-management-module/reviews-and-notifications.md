@@ -33,11 +33,11 @@ Rules:
 
 | Notification | Sent when | To |
 | --- | --- | --- |
-| **Review due** | A Risk's review date is within 7 days. | The Risk's owner (every member of an owner group). |
+| **Review due** | A Risk's review date is within the reminder lead (the project's default, 7 days unless changed). | The Risk's owner (every member of an owner group). |
 | **Review overdue** | The review date has passed. | The Risk's owner (every member of an owner group). |
 | **Treatment needs reassessment** | A Requirement behind an Effective verdict changed. | The Risk's owner (every member of an owner group). |
 
-If a Risk has no owner, or its owner group has no one left to notify, the notification goes to the project's Risk Managers and Project Managers instead, so an unowned Risk still reaches someone accountable. Due and overdue notices come from a sweep that runs daily; each is sent once per review date, so a rescheduled review re-arms itself. Selecting a Risk notification opens the Risk. Delivery follows each person's settings; see [Notifications and email](../../core-features/notifications-and-email.md).
+If a Risk has no owner, or its owner group has no one left to notify, the notification goes to the default owner of the project's Governance review policy when it names one, and otherwise to the project's Risk Managers and Project Managers, so an unowned Risk still reaches someone accountable. The default owner may also record the review of a Risk that has no owner. When the project's review policy sets an interval, the next review date must be no later than that many days from the day the review is recorded. Due and overdue notices come from a sweep that runs daily; each is sent once per review date, so a rescheduled review re-arms itself. Selecting a Risk notification opens the Risk. Delivery follows each person's settings; see [Notifications and email](../../core-features/notifications-and-email.md).
 
 The register flags overdue reviews with an **Overdue** marker and a **Review overdue** filter.
 

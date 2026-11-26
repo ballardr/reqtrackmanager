@@ -61,6 +61,7 @@ from app.modules.stakeholders.engagements import (
     RESEARCH_SUBCOMPONENT,
 )
 from app.modules.stakeholders.groups import GROUP_ARTEFACT_TYPE, GROUP_CODE_PREFIX
+from app.modules.stakeholders.lifecycles import LIFECYCLES
 from app.modules.stakeholders.long_text import MARKDOWN_FIELDS, PLAIN_TEXT_FIELDS
 from app.modules.stakeholders.models import (
     Engagement,
@@ -911,6 +912,12 @@ MODULE_DEFINITION = ModuleDefinition(
             ),
         ),
     ),
+    lifecycles=LIFECYCLES,
+    no_lifecycle={
+        "stakeholder_group": "A group is a named set of stakeholders with no status.",
+        "engagement": "An engagement is a dated record of contact; it has no status path.",
+        "research_finding": "A finding is a recorded observation with no status path.",
+    },
     artefact_types=(
         PERSONA_ARTEFACT_TYPE, STAKEHOLDER_ARTEFACT_TYPE, NEED_ARTEFACT_TYPE, GROUP_ARTEFACT_TYPE,
         ENGAGEMENT_ARTEFACT_TYPE, FINDING_ARTEFACT_TYPE,

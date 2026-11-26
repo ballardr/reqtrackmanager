@@ -47,6 +47,7 @@ from app.models.relationship import ArtefactLink
 from app.models.user import User
 from app.modules.architecture.enums import RecordStatus
 from app.modules.architecture.labels import INACTIVE_STATUSES
+from app.modules.architecture.lifecycles import ProjectMoves
 from app.modules.architecture.models import (
     ArchitectureConnection,
     ArchitectureConnectionType,
@@ -82,7 +83,7 @@ from app.modules.architecture.service import (
     ELEMENT_TYPES,
     SYMBOLS,
 )
-from app.modules.architecture.transitions import allowed_moves, move_refusal
+from app.modules.architecture.transitions import move_refusal
 from app.modules.architecture.visibility import (
     Viewer,
     granted_element_ids,
@@ -96,6 +97,7 @@ from app.services import record_comments as comment_service
 from app.services import tags as tag_service
 from app.services.audit import log_event
 from app.services.external_references import forget_record_references
+from app.services.lifecycles import check_move
 from app.services.principals import label_of, principal_columns, principal_labels, principal_ref, validate_principal
 from app.services.relationships import delete_link, get_all_links
 from app.services.sequences import generate_unique_code
@@ -307,6 +309,31 @@ def _clean_note(value: str) -> str:
         The note to store.
     """
     return value.replace("\r\n", "\n").replace("\r", "\n").strip()
+
+
+def require_lifecycle_move(
+    db: Session, project_id: uuid.UUID | None, artefact_type: str, record_id: uuid.UUID, current: str, target: RecordStatus,
+) -> None:
+    """Refuses a status move the project's lifecycle for the type does not allow (a status the project turned off).
+
+    The map of legal moves (`move_refusal`) is checked by the caller; this adds the project's settings, through
+    `services.lifecycles.check_move`.
+
+    Args:
+        db: Active session (a skip of steps writes one audit event; not committed).
+        project_id: The record's project, `None` for an organisation-owned element, which keeps the full map.
+        artefact_type: The record type.
+        record_id: The record.
+        current: Its current status.
+        target: The status it is moved to.
+
+    Raises:
+        RuleError: 409 naming the allowed next statuses.
+    """
+    try:
+        check_move(db, project_id, artefact_type, current, target.value, record_id=record_id)
+    except ValueError as exc:
+        raise RuleError(str(exc), 409) from exc
 
 
 def _check_version(
@@ -600,6 +627,7 @@ def change_element_status(
     refusal = move_refusal(element.status, status)
     if refusal:
         raise RuleError(refusal, 409)
+    require_lifecycle_move(db, owner.project_id, ELEMENT_ARTEFACT_TYPE, element.id, element.status, status)
     if status.value in INACTIVE_STATUSES:
         _require_children_finished(db, element, "retire" if status is RecordStatus.RETIRED else "reject")
     previous = element.status
@@ -898,6 +926,7 @@ def change_connection_status(
     refusal = move_refusal(connection.status, status)
     if refusal:
         raise RuleError(refusal, 409)
+    require_lifecycle_move(db, project.id, CONNECTION_ARTEFACT_TYPE, connection.id, connection.status, status)
     previous = connection.status
     _touch(connection, status=status.value)
     db.flush()
@@ -990,6 +1019,7 @@ def element_outs(
     its connection count then covers only the viewer's own connections (another owner's are not disclosed).
     """
     ids = [e.id for e in elements]
+    moves = ProjectMoves(db, ELEMENT_ARTEFACT_TYPE)
     ports = ports_for(db, ids)
     element_types = _type_rows(db, ArchitectureElementType, (e.element_type_id for e in elements))
     connection_types = _type_names(
@@ -1027,7 +1057,7 @@ def element_outs(
             parent_id=e.parent_id, folder_path=paths.get(e.folder_id) if e.folder_id else None,
             folder_id=None if viewer_project_id is not None and e.project_id != viewer_project_id else e.folder_id,
             owner=label_of(labels, e.owner_type, e.owner_id), status=e.status,
-            allowed_status_moves=allowed_moves(e.status), version=e.version, creator_id=e.creator_id,
+            allowed_status_moves=moves.of(e.project_id, e.status), version=e.version, creator_id=e.creator_id,
             is_archived=e.is_archived, archived_at=e.archived_at, created_at=e.created_at,
             updated_at=e.updated_at, child_count=child_counts.get(e.id, 0), connection_count=connection_counts.get(e.id, 0),
             ports=[port_out(p, connection_types) for p in ports.get(e.id, ())],
@@ -1039,6 +1069,7 @@ def element_outs(
 def connection_outs(db: Session, connections: Sequence[ArchitectureConnection], viewer: Viewer) -> list[ConnectionOut]:
     """API shapes for `connections` as the viewer sees them: types, ends and ports are read in bulk. An end the viewer
     cannot read (its sharing was revoked) is a locked placeholder holding only its code, with no name and no port name."""
+    moves = ProjectMoves(db, CONNECTION_ARTEFACT_TYPE)
     end_ids = {c.source_element_id for c in connections} | {c.target_element_id for c in connections}
     ends = {
         row.id: row for row in db.scalars(select(ArchitectureElement).where(ArchitectureElement.id.in_(end_ids)))
@@ -1092,7 +1123,7 @@ def connection_outs(db: Session, connections: Sequence[ArchitectureConnection], 
             directional=types[c.connection_type_id].directional, **end(c, "source"), **end(c, "target"),
             protocol=c.protocol, description=c.description, folder_id=c.folder_id,
             folder_path=paths.get(c.folder_id) if c.folder_id else None, status=c.status,
-            allowed_status_moves=allowed_moves(c.status), version=c.version,
+            allowed_status_moves=moves.of(c.project_id, c.status), version=c.version,
             creator_id=c.creator_id, is_archived=c.is_archived, archived_at=c.archived_at, created_at=c.created_at,
             updated_at=c.updated_at, realises=realises.get(c.id, []), realised_by=realised_by.get(c.id, []),
         )

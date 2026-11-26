@@ -13,7 +13,7 @@ import io
 import json
 import uuid
 import zipfile
-from datetime import date, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
@@ -34,7 +34,7 @@ from tests.conftest import auth_headers
 
 
 def _days(n: int) -> str:
-    return (date.today() + timedelta(days=n)).isoformat()
+    return (datetime.now(UTC).date() + timedelta(days=n)).isoformat()
 
 
 def _export(client, token, project_id) -> bytes:

@@ -3,8 +3,8 @@ Module: modules.risk_management.module
 
 Registers Risk Management through `MODULE_DEFINITION`: roles (`risk_manager`,
 `risk_acceptor`, `risk_type_admin`), the `risk` artefact type and scoring scheme,
-one sub-component, summaries, link type seeds, notification types, the daily
-review sweep, `on_artefact_changed`, reports, principal references, bundle
+one sub-component, summaries, link type seeds, notification types, the review
+adapter (the core review engine sends the reminders), `on_artefact_changed`, reports, principal references, bundle
 hooks, MCP tools and the Tier A frontend manifest. `on_org_created` seeds the
 default types. `default_enabled=False`.
 """
@@ -27,7 +27,6 @@ from app.modules.registry import (
     ModuleOrgBundleHooks,
     ModuleProjectBundleHooks,
     ModuleRoleDefinition,
-    ModuleScheduledJob,
     ModuleSubComponentDefinition,
     PerfDatasetGenerator,
     PrincipalReference,
@@ -46,6 +45,7 @@ from app.modules.risk_management.record_tables import RECORD_TABLES
 from app.modules.risk_management.report_fields import REPORT_FIELDS
 from app.modules.risk_management.report_starters import REPORT_STARTER_SECTIONS
 from app.modules.risk_management.reports import REPORT_DEFINITIONS
+from app.modules.risk_management.reviews import RISK_REVIEW_ADAPTER
 from app.modules.risk_management.scaling_probes import SCALING_PROBES
 from app.modules.risk_management.scoring import RISK_SCORING_SCHEME
 from app.modules.risk_management.search import SEARCH_PROVIDERS
@@ -120,14 +120,6 @@ def resolve_file_owner_project_id(db: Session, file_id: UUID) -> UUID | None:
     from app.modules.risk_management.service import resolve_risk_file_project_id
 
     return resolve_risk_file_project_id(db, file_id)
-
-
-def _run_review_notifications(db: Session) -> None:
-    """`ModuleScheduledJob.run`: the daily review-due/overdue sweep; imported
-    lazily like `get_router`."""
-    from app.modules.risk_management.alerts import send_review_notifications
-
-    send_review_notifications(db)
 
 
 def _on_artefact_changed(db: Session, change: ArtefactChange) -> None:
@@ -208,7 +200,7 @@ MODULE_DEFINITION = ModuleDefinition(
     ),
     notification_types=NOTIFICATION_TYPES,
     on_artefact_changed=_on_artefact_changed,
-    scheduled_jobs=(ModuleScheduledJob(job_id="review_reminders", hour=3, minute=0, run=_run_review_notifications),),
+    review_adapters={RISK_ARTEFACT_TYPE: RISK_REVIEW_ADAPTER},
     principal_references=_principal_references(),
     mcp_tools=build_mcp_tools(),
     mcp_guidance=_MCP_GUIDANCE,

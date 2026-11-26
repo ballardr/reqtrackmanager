@@ -36,7 +36,7 @@ from app.models.notification import NotificationType
 from app.models.organization import Organization
 from app.models.project import Project
 from app.models.requirement import Requirement, RequirementReview, RequirementVersion
-from app.modules.seams import DueReview, ReviewAdapter, ReviewReminder
+from app.modules.seams import DueReview, ReminderMark, ReviewAdapter, ReviewReminder
 from app.schemas.principal import PrincipalOut
 from app.services import review_engine
 from app.services.client_date import effective_today
@@ -185,11 +185,11 @@ def _pending_reminders(db: Session) -> Sequence[ReviewReminder]:
     ]
 
 
-def _mark_reminded(db: Session, requirement_ids: Sequence[UUID], when: datetime) -> None:
+def _mark_reminded(db: Session, marks: Sequence[ReminderMark], when: datetime) -> None:
     """`ReviewAdapter.mark_reminded` for requirements: stamps each one's current version."""
     db.execute(
         update(RequirementVersion)
-        .where(RequirementVersion.requirement_id.in_(requirement_ids), RequirementVersion.valid_to.is_(None))
+        .where(RequirementVersion.requirement_id.in_([m.artefact_id for m in marks]), RequirementVersion.valid_to.is_(None))
         .values(review_reminder_sent_at=when)
     )
     db.flush()

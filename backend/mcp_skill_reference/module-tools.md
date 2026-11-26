@@ -1608,7 +1608,7 @@ Rules and gotchas:
 - `transition_risk` to `accepted` is an approval: it needs the Risk Acceptor role and AI approval enabled on the project and organisation. Only do it when the user explicitly asks, and pass their reason as `comment`.
 - An `accepted` risk's levels, acceptance criteria and strategy cannot be edited; move it back to `assessed` first.
 - A change to a linked requirement moves its `effective` verdict to `needs_reassessment`. Reassess it with `assess_risk_treatment`; do not simply re-mark it effective without checking the change.
-- `record_risk_review` with `confirmed` fails while any treatment `needs_reassessment`; reassess first or record `reassessed`. `next_review_date` is required (a future date, or null for none).
+- `record_risk_review` with `confirmed` fails while any treatment `needs_reassessment`; reassess first or record `reassessed`. `next_review_date` is required (a future date, or null for none) and, when the project's governance review policy sets an interval, no later than that many days from today.
 - A risk's `owner` is `{"type": "user" | "org_group" | "project_group", "id": ...}`, so a team can be accountable; responses return the same shape plus `label`. `null` clears it. Members of an owner group may assess treatments and record reviews, as the owner can.
 - There is no delete tool. Do not invent level or type ids; read them.
 - A project may turn off Treatment planned and Treatment in progress; `allowed_next_statuses` already reflects that, and the checks of a state passed over (owner and treatment strategy) still apply.

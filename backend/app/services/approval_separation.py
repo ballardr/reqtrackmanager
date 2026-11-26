@@ -53,7 +53,14 @@ from app.models.lifecycle import (
 from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
-from app.modules.registry import artefact_type_enabled_for_project, get_artefact_type_label, get_lifecycles
+from app.modules.registry import (
+    artefact_type_enabled_for_project,
+    artefact_type_module,
+    get_artefact_type_label,
+    get_lifecycles,
+    get_module_approval_gates,
+    is_module_enabled_for_project,
+)
 from app.services.audit import log_event
 from app.services.lifecycles import enabled_for_organization
 from app.services.project_hierarchy import get_project_chain_ids
@@ -119,12 +126,23 @@ class ResolvedSeparation:
 
 
 def approval_gates() -> dict[str, ApprovalGate]:
-    """Every record type with an approval gate, by type: core types first, then each lifecycle with a gated state."""
+    """Every record type with an approval gate, by type: core types first, then each lifecycle with a gated state, then
+    the types a module declares in `ModuleDefinition.approval_gates`."""
     gates = {t: ApprovalGate(t, get_artefact_type_label(t), "") for t in CORE_GATES}
     for artefact_type, (module_key, definition) in get_lifecycles().items():
         if definition.gated:
             gates.setdefault(artefact_type, ApprovalGate(artefact_type, definition.label, module_key))
+    for artefact_type, (module_key, declared) in get_module_approval_gates().items():
+        gates.setdefault(artefact_type, ApprovalGate(artefact_type, declared.label, module_key))
     return gates
+
+
+def _gate_enabled_for_project(db: Session, gate: ApprovalGate, project_id: uuid.UUID) -> bool:
+    """Whether the gated type's module (and the sub-component serving the type) is enabled for the project; a type a module
+    declares only in `approval_gates` is served by the module as a whole."""
+    if gate.module_key and artefact_type_module(gate.artefact_type) is None:
+        return is_module_enabled_for_project(db, project_id, gate.module_key)
+    return artefact_type_enabled_for_project(db, gate.artefact_type, project_id)
 
 
 def _gate(artefact_type: str) -> ApprovalGate:
@@ -178,7 +196,7 @@ def resolve_project_separations(db: Session, project: Project) -> list[ResolvedS
             exemptions.setdefault(ex.artefact_type, []).append(ex)
     out: list[ResolvedSeparation] = []
     for artefact_type, gate in sorted(approval_gates().items()):
-        if not artefact_type_enabled_for_project(db, artefact_type, project.id):
+        if not _gate_enabled_for_project(db, gate, project.id):
             continue
         chosen = False
         source: Source = "default"
@@ -266,6 +284,9 @@ def record_context(db: Session, artefact_type: str, record_id: uuid.UUID) -> tup
     from app.models.requirement import Requirement
 
     _gate(artefact_type)
+    declared = get_module_approval_gates().get(artefact_type)
+    if declared is not None:
+        return declared[1].record_context(db, record_id)
     model = {"requirement": Requirement, "change_request": ChangeRequest}.get(artefact_type)
     if model is None:
         model = get_lifecycles()[artefact_type][1].record_model

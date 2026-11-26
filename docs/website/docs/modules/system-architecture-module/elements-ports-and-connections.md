@@ -31,7 +31,7 @@ flowchart LR
 
 ## Elements
 
-An element has a name, a description, a type (which sets how it is drawn), an optional parent, an owner and a status. Parents form a tree up to 12 levels deep: a diagram can show a parent as one box, or open it to show its children. An element belongs to a project or to the organisation; an organisation element can be shared with projects through collections.
+An element has a name, a description, a type (which sets how it is drawn), an optional parent, an owner and a status. Elements, connections, diagrams and state machine diagrams move through Draft, Proposed, Active and Retired (or Rejected); a project can turn off Proposed under **Project administration, Lifecycles**, and an organisation can require it (see [Lifecycles](../../core-features/lifecycles.md)). Parents form a tree up to 12 levels deep: a diagram can show a parent as one box, or open it to show its children. An element belongs to a project or to the organisation; an organisation element can be shared with projects through collections.
 
 The **symbol** field chooses the drawing shown in the element's box; left empty, the element uses its type's symbol. The field is one button showing the current drawing and name; it opens a panel with a **Search** field above, the symbols in the middle and view buttons below. **List** shows the symbol names, **Gallery** a scrolling grid that shows every drawing, and **Upload** (offered only to a person who may change the library) adds a new drawing and chooses it. Both choices include **None**, which returns to the default. The List or Gallery choice is remembered in the browser. The arrow keys move between rows or tiles, Enter or Space chooses, and Escape closes the panel.
 

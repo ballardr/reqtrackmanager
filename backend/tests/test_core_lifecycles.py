@@ -302,7 +302,7 @@ def test_a_project_turns_reviewed_off_and_the_organisation_can_require_it(client
         f"/api/v1/orgs/{org['id']}/lifecycles/requirement", json={"required_states": ["reviewed"]}, headers=auth_headers(token)
     )
     assert required.status_code == 200, required.text
-    assert [x["artefact_type"] for x in required.json()] == ["requirement"]
+    assert [x["artefact_type"] for x in required.json()] == ["component_stage", "project_stage", "requirement"]
     shown = next(x for x in _lifecycles(client, token, project["id"])["lifecycles"] if x["artefact_type"] == "requirement")
     assert shown["required"] == ["reviewed"] and shown["disabled"] == []
 

@@ -30,12 +30,12 @@ from app.schemas.requirement import (
     RequirementReviewCreate,
     RequirementReviewOut,
 )
-from app.services import approval_separation, pubsub
+from app.services import approval_separation, pubsub, review_engine
 from app.services.audit import log_event
 from app.services.lookups import project_or_404
 from app.services.principals import is_principal_member, label_of, principal_ref
 from app.services.rbac import get_effective_project_roles, require_ai_approvals_enabled, require_project_manage, require_project_view
-from app.services.requirements import apply_new_version, get_current_version, get_current_version_for_update
+from app.services.requirements import apply_new_version, check_status_move, get_current_version, get_current_version_for_update
 from app.services.reviews import get_due_reviews_for_project, reviewer_labels
 
 router = APIRouter(tags=["requirements-workflow"])
@@ -102,7 +102,8 @@ def record_review_outcome(
     """Records the outcome of a requirement's scheduled review (C-R-07).
 
     Gate: the requirement's assigned reviewer (C-R-10; when that is a group, any one of its members, recorded as
-    `reviewed_by`), or a project manager as a fallback. Does not touch `review_date` (see `services/reviews.py`'s
+    `reviewed_by`), the review policy's default owner when the requirement has no reviewer, or a project manager as a
+    fallback. Does not touch `review_date` (see `services/reviews.py`'s
     due-list definition): the requirement leaves the due list because a review now exists.
 
     A `FAILED` outcome against a currently completed requirement also clears its completion overlay
@@ -116,7 +117,9 @@ def record_review_outcome(
     version = get_current_version(db, requirement.id)
     is_reviewer = is_principal_member(db, principal_ref(version.reviewer_type, version.reviewer_id), current_user.id)
     is_manager = ProjectRole.PROJECT_MANAGER in get_effective_project_roles(db, current_user.id, project_id)
-    if not (is_reviewer or is_manager):
+    if not (is_reviewer or is_manager or review_engine.may_review_as_default_owner(
+        db, current_user.id, project_id, "requirement", principal_ref(version.reviewer_type, version.reviewer_id),
+    )):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
             "Only the assigned reviewer (or a member of the reviewer group) or a project manager may record this.",
@@ -179,6 +182,7 @@ def approve_requirement(
     current_version = get_current_version_for_update(db, requirement.id)
     if current_version.status not in REQUIRES_APPROVAL_STATUSES:
         raise HTTPException(status.HTTP_409_CONFLICT, "Only a draft or reviewed requirement can be approved.")
+    check_status_move(db, project_id, requirement.id, current_version.status, RequirementStatus.APPROVED)
     comment = ((payload.comment if payload else None) or "").strip()
     approval_separation.enforce_approval(
         db, user=current_user, artefact_type="requirement", record_id=requirement.id, creator_id=requirement.creator_id,

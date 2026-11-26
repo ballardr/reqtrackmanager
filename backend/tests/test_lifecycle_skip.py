@@ -45,12 +45,10 @@ def test_a_skip_reaches_later_steps_and_never_passes_a_gated_step():
 
 def test_a_skip_never_passes_a_required_step():
     _, pain_point = get_lifecycles()["pain_point"]
-    assert skip_moves(pain_point, (), (), "submitted") == {
-        "accepted": ("triaged",), "addressed": ("triaged", "accepted"), "closed": ("triaged", "accepted", "addressed"),
-    }
+    assert skip_moves(pain_point, (), (), "submitted") == {"accepted": ("triaged",)}, "Accepted is gated: nothing beyond it"
     required = skip_moves(pain_point, (), ("triaged",), "submitted")
     assert required == {}, "Triaged is required: it may be the next step but nothing beyond it is reachable"
-    assert skip_moves(pain_point, (), (), "triaged")["addressed"] == ("accepted",)
+    assert skip_moves(pain_point, (), (), "triaged") == {}, "Accepted is a move the path already allows from Triaged"
 
 
 def test_a_move_the_path_already_allows_is_not_a_skip():
@@ -58,7 +56,7 @@ def test_a_move_the_path_already_allows_is_not_a_skip():
     assert "triaged" not in skip_moves(pain_point, (), (), "submitted")
     off = skip_moves(pain_point, ("triaged",), (), "submitted")
     assert "accepted" not in off, "stepping over a turned-off state is an ordinary move"
-    assert off["addressed"] == ("triaged", "accepted")
+    assert off == {}, "Accepted is gated, so a skip reaches nothing beyond it"
 
 
 def test_an_off_path_state_has_no_skips():
@@ -253,15 +251,15 @@ def test_a_skip_moves_the_record_and_records_the_steps_passed_over(client, admin
     _, project, token = _setup(client, admin_token, "Skip Works Co")
     _put_skip(client, token, project["id"], True)
     pain_point = _pain_point(client, token, project["id"])
-    resp = _move(client, token, project["id"], pain_point, "address", reason="Fixed in the hot patch ü")
+    resp = _move(client, token, project["id"], pain_point, "accept", reason="Triaged in the meeting ü")
     assert resp.status_code == 200, resp.text
-    assert resp.json()["status"] == "addressed"
+    assert resp.json()["status"] == "accepted"
     (event,) = _events(pain_point, "steps_skipped")
     assert event.detail == {
-        "from": "submitted", "to": "addressed", "skipped": ["triaged", "accepted"],
-        "skipped_labels": ["Triaged", "Accepted"], "reason": "Fixed in the hot patch ü",
+        "from": "submitted", "to": "accepted", "skipped": ["triaged"],
+        "skipped_labels": ["Triaged"], "reason": "Triaged in the meeting ü",
     }
-    assert len(_events(pain_point, "status_changed")) + len(_events(pain_point, "addressed")) >= 1
+    assert len(_events(pain_point, "status_changed")) + len(_events(pain_point, "accepted")) >= 1
 
 
 def test_a_skip_needs_a_reason_within_the_limit(client, admin_token):

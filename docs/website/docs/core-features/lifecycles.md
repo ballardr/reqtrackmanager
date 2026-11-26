@@ -23,6 +23,9 @@ flowchart LR
 | Guiding Principle | Proposed |
 | Risk | Treatment planned, Treatment in progress |
 | Enhancement request | Under review |
+| Requirement | Reviewed |
+| Project stage, Component stage | Review (the kind of phase; a workflow's own phase names are unchanged) |
+| Element, Connection, Diagram, State machine diagram (Architecture) | Proposed |
 
 A start state, an end state, a state outside the main path (Rejected, Withdrawn, Retired) and an **approval** state (Approved) are never optional. With the review steps of a Decision turned off, it goes from Draft to Approved through the same approval dialog, and only a person who holds the approval permission can do it.
 
@@ -68,7 +71,7 @@ flowchart LR
 
 ## Who may approve: the creator or another person
 
-Some steps need an approval: a change request, a requirement, a Decision, a Risk acceptance, and a Strategy, Future State or Guiding Principle. By default the person who created a record may approve it if they hold the approval permission, so a team of one can work. The record then shows a **Self-approved** badge, and the history records the approval as made by its creator.
+Some steps need an approval: a change request, a requirement, a Decision, a Risk acceptance, a Compliance requirement assessment, a Pain Point acceptance, and a Strategy, Future State or Guiding Principle. By default the person who created a record may approve it if they hold the approval permission, so a team of one can work. The record then shows a **Self-approved** badge, and the history records the approval as made by its creator.
 
 A project administrator can change this under **Project administration, Lifecycles, Approval**. Each record type with an approval step has three choices:
 

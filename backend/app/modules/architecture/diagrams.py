@@ -61,6 +61,7 @@ from app.models.user import User
 from app.modules.architecture import boundaries as boundary_rules
 from app.modules.architecture.enums import AttachPoint, LeaderKind, LineEnd, LineShape, NoteAlign, NoteSizeMode, NoteTone, RecordStatus
 from app.modules.architecture.labels import INACTIVE_STATUSES
+from app.modules.architecture.lifecycles import ProjectMoves
 from app.modules.architecture.models import (
     ArchitectureConnection,
     ArchitectureDiagram,
@@ -81,6 +82,7 @@ from app.modules.architecture.records import (
     _touch,
     _usable_folder,
     folder_paths,
+    require_lifecycle_move,
 )
 from app.modules.architecture.schemas import (
     AnchorIn,
@@ -105,7 +107,7 @@ from app.modules.architecture.service import (
     DOMAINS,
     ELEMENT_TYPES,
 )
-from app.modules.architecture.transitions import allowed_moves, move_refusal
+from app.modules.architecture.transitions import move_refusal
 from app.modules.architecture.visibility import Viewer, visible_element_ids
 from app.services.audit import log_event
 from app.services.sequences import generate_unique_code
@@ -288,6 +290,7 @@ def change_diagram_status(
     refusal = move_refusal(diagram.status, status)
     if refusal:
         raise RuleError(refusal, 409)
+    require_lifecycle_move(db, project_id, DIAGRAM_ARTEFACT_TYPE, diagram.id, diagram.status, status)
     previous = diagram.status
     _touch(diagram, status=status.value)
     db.flush()
@@ -921,6 +924,7 @@ def _replace_members(db: Session, row: ArchitectureDiagramToggle, toggle: Toggle
 def diagram_outs(db: Session, diagrams: Sequence[ArchitectureDiagram], viewer: Viewer) -> list[DiagramOut]:
     """API shapes for `diagrams`: counts and scope elements are read in bulk, so the cost does not grow with the list."""
     ids = [d.id for d in diagrams]
+    moves = ProjectMoves(db, DIAGRAM_ARTEFACT_TYPE)
 
     def counts(model: Any) -> dict[uuid.UUID, int]:
         if not ids:
@@ -950,7 +954,7 @@ def diagram_outs(db: Session, diagrams: Sequence[ArchitectureDiagram], viewer: V
             ),
             connection_detail=d.connection_detail, line_hops=d.line_hops, show_connection_names=d.show_connection_names,
             line_shape=LineShape(d.line_shape), folder_id=d.folder_id,
-            folder_path=paths.get(d.folder_id) if d.folder_id else None, status=d.status, allowed_status_moves=allowed_moves(d.status),
+            folder_path=paths.get(d.folder_id) if d.folder_id else None, status=d.status, allowed_status_moves=moves.of(d.project_id, d.status),
             version=d.version, creator_id=d.creator_id,
             is_archived=d.is_archived, archived_at=d.archived_at, created_at=d.created_at, updated_at=d.updated_at,
             placement_count=placements.get(d.id, 0), note_count=notes.get(d.id, 0), toggle_count=toggles.get(d.id, 0),

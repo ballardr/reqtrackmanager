@@ -455,6 +455,17 @@ def apply_phase_move(
         raise PermissionError(f"Only a project manager can move a {what} into or out of a locked phase.")
     if phase.id == holder.phase_id:
         raise WorkflowConflict(f"The {what} is already in this phase.")
+    if phase.kind != old_kind:
+        # Imported here: `services.lifecycles` reads the registry, which reads this package's definitions.
+        from app.services.lifecycles import check_move
+
+        try:
+            check_move(
+                db, project.id, "project_stage" if holder is stage else "component_stage", old_kind.value, phase.kind.value,
+                record_id=holder.id,
+            )
+        except ValueError as exc:
+            raise WorkflowConflict(str(exc)) from exc
 
     entity_type, entity_id = ("project_stage", stage.id) if holder is stage else ("component_stage_state", holder.id)
     old_phase_id = holder.phase_id

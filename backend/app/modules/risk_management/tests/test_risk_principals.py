@@ -14,14 +14,14 @@ import io
 import json
 import uuid
 import zipfile
-from datetime import date, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select, text
 
 from alembic import command
 from app.database import SessionLocal, engine
 from app.models.audit import AuditEvent
-from app.modules.risk_management.alerts import REVIEW_OVERDUE_TYPE, TREATMENT_REASSESSMENT_TYPE, send_review_notifications
+from app.modules.risk_management.alerts import REVIEW_OVERDUE_TYPE, TREATMENT_REASSESSMENT_TYPE
 from app.modules.risk_management.models import RiskVersion
 from app.modules.risk_management.tests._helpers import (
     assess,
@@ -33,6 +33,7 @@ from app.modules.risk_management.tests._helpers import (
     user_ref,
 )
 from app.modules.risk_management.tests.test_risk_export_import import _edit_bundle, _export, _import, _risks
+from app.services import review_engine
 from tests.conftest import (
     auth_headers,
     build_alembic_config,
@@ -73,7 +74,7 @@ def _member(client, token, org, project, label: str) -> tuple[str, str]:
 
 
 def _days(n: int) -> str:
-    return (date.today() + timedelta(days=n)).isoformat()
+    return (datetime.now(UTC).date() + timedelta(days=n)).isoformat()
 
 
 def _notifications(client, token, kind: str) -> list[dict]:
@@ -83,7 +84,7 @@ def _notifications(client, token, kind: str) -> list[dict]:
 
 def _sweep() -> None:
     with SessionLocal() as db:
-        send_review_notifications(db)
+        review_engine.send_review_reminders(db)
 
 
 # --- Create, update, clear: each principal kind --------------------------------------------------------

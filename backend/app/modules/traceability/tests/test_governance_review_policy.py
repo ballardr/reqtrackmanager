@@ -186,10 +186,12 @@ def test_the_policy_lists_the_types_with_a_review_schedule(client, admin_token):
     org, project, token = _world(client, admin_token, "Review Types Org")
     profile = _create(client, token, org["id"], "Regulated")
     types = client.get(_profile_url(org["id"], profile["id"]), headers=auth_headers(token)).json()["types"]
-    assert [(t["artefact_type"], t["label"], t["module_key"]) for t in types] == [("requirement", "Requirement", "")]
-    assert types[0]["settings"] == {"interval_days": None, "lead_days": None, "default_owner": None}
-    assert [t["artefact_type"] for t in _policy(client, token, project["id"])["types"]] == ["requirement"]
-    # A type with no review schedule is not found, and a risk has none until it moves onto the engine.
+    assert [(t["artefact_type"], t["label"], t["module_key"]) for t in types] == [
+        ("compliance_review", "Compliance review", "compliance"), ("requirement", "Requirement", ""),
+    ]
+    assert types[1]["settings"] == {"interval_days": None, "lead_days": None, "default_owner": None}
+    assert [t["artefact_type"] for t in _policy(client, token, project["id"])["types"]] == ["compliance_review", "requirement"]
+    # A type with no review schedule is not found; a risk is listed only where Risk Management is on.
     _set_profile(client, token, org["id"], profile["id"], "decision", {"interval_days": 5}, status=404)
     _set_project(client, token, project["id"], "no_such_type", {}, status=404)
 
@@ -220,11 +222,11 @@ def test_settings_are_stored_read_back_with_labels_and_an_empty_profile_row_is_r
         client, token, org["id"], profile["id"], "requirement",
         {"interval_days": 90, "lead_days": 14, "default_owner": _principal("org_group", team)},
     )
-    settings = out["types"][0]["settings"]
+    settings = _entry(out)["settings"]
     assert settings["interval_days"] == 90 and settings["lead_days"] == 14
     assert settings["default_owner"]["label"] == "Review Team" and settings["default_owner"]["type"] == "org_group"
     out = _set_profile(client, token, org["id"], profile["id"], "requirement", {})
-    assert out["types"][0]["settings"] == {"interval_days": None, "lead_days": None, "default_owner": None}
+    assert _entry(out)["settings"] == {"interval_days": None, "lead_days": None, "default_owner": None}
     db = SessionLocal()
     try:
         assert db.scalars(select(GovernanceReviewPolicy).where(GovernanceReviewPolicy.profile_id == uuid.UUID(profile["id"]))).all() == []
@@ -523,3 +525,55 @@ def test_the_review_rows_are_template_configuration():
     assert {bundle.CHOICES_KEY, bundle.APPROVAL_POLICIES_KEY, bundle.REVIEW_POLICIES_KEY} <= set(
         module.project_bundle_hooks.template_configuration_keys
     )
+
+
+# --- the requirement's review date and review route ----------------------------------------------
+
+
+def _edit(client, token, project_id, requirement: dict, **changes):
+    body = {
+        "name": requirement["name"], "component_id": requirement["component_id"], "category_id": requirement["category_id"],
+        "owner": {"type": requirement["owner"]["type"], "id": requirement["owner"]["id"]}, **changes,
+    }
+    return client.put(f"/api/v1/projects/{project_id}/requirements/{requirement['id']}", json=body, headers=auth_headers(token))
+
+
+def test_the_interval_caps_a_requirements_review_date_when_it_is_set_or_changed(client, admin_token):
+    org, project, token = _world(client, admin_token, "Review Interval Cap Org")
+    pid = project["id"]
+    far = _requirement(client, token, pid, review_date=TODAY + timedelta(days=200), name="Far")
+    _set_project(client, token, pid, "requirement", {"interval_days": 90})
+    latest = (TODAY + timedelta(days=90)).isoformat()
+
+    # An unchanged date is not set again, so a requirement scheduled before the policy can still be edited.
+    assert _edit(client, token, pid, far, name="Renamed", review_date=far["review_date"]).status_code == 200
+    refused = _edit(client, token, pid, far, review_date=(TODAY + timedelta(days=150)).isoformat())
+    assert refused.status_code == 422 and latest in refused.json()["detail"]
+    assert _edit(client, token, pid, far, review_date=latest).status_code == 200
+    assert _edit(client, token, pid, far, review_date=None).status_code == 200  # no scheduled review is no date to cap
+
+    component_id, category_id = create_component_and_category(client, token, pid) if pid not in _SCOPES else _SCOPES[pid]
+    body = {"name": "New", "component_id": component_id, "category_id": category_id, "review_date": (TODAY + timedelta(days=91)).isoformat()}
+    assert client.post(f"/api/v1/projects/{pid}/requirements", json=body, headers=auth_headers(token)).status_code == 422
+    assert _requirement(client, token, pid, review_date=TODAY + timedelta(days=90), name="Within")["review_date"] == latest
+
+
+def test_the_default_owner_may_record_the_review_of_a_requirement_with_no_reviewer(client, admin_token):
+    org, project, token = _world(client, admin_token, "Review Default Owner Gate Org")
+    pid = project["id"]
+    steward, steward_token = _member(client, token, org["id"], pid)
+    other, other_token = _member(client, token, org["id"], pid)
+    reviewer, _ = _member(client, token, org["id"], pid)
+    unassigned = _requirement(client, token, pid, review_date=TODAY + timedelta(days=5), name="Unassigned")
+    assigned = _requirement(client, token, pid, review_date=TODAY + timedelta(days=5), name="Assigned", reviewer=_principal("user", reviewer))
+
+    def record(who, requirement):
+        return client.post(
+            f"/api/v1/projects/{pid}/requirements/{requirement['id']}/reviews", json={"outcome": "met"}, headers=auth_headers(who),
+        )
+
+    assert record(steward_token, unassigned).status_code == 403
+    _set_project(client, token, pid, "requirement", {"default_owner": _principal("user", steward)})
+    assert record(steward_token, unassigned).status_code == 201
+    assert record(other_token, unassigned).status_code == 403
+    assert record(steward_token, assigned).status_code == 403  # a named reviewer is never replaced

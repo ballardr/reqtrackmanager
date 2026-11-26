@@ -36,6 +36,7 @@ from tests.stage_helpers import move_stage
 
 GATED_TYPES = {
     "requirement", "change_request", "decision", "risk", "strategy", "future_state", "guiding_principle",
+    "project_compliance_requirement", "pain_point",
 }
 
 
@@ -381,7 +382,7 @@ def test_only_the_lifecycle_permissions_change_the_setting(client, admin_token):
 
 def test_an_unknown_type_and_a_foreign_project_are_refused(client, admin_token):
     org, project, token = _setup(client, admin_token, "Separation Validate Co")
-    assert _put_project(client, token, project["id"], "pain_point", True).status_code == 404
+    assert _put_project(client, token, project["id"], "open_question", True).status_code == 404
     assert _put_org(client, token, org["id"], "no_such_type", True).status_code == 404
     other_org, other_project, _ = _setup(client, admin_token, "Separation Foreign Co")
     assert _exempt(client, token, org["id"], "requirement", other_project["id"]).status_code == 404

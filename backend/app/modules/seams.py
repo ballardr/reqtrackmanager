@@ -154,6 +154,21 @@ class PolicyResolver:
 
 
 @dataclass(frozen=True)
+class ApprovalGateDefinition:
+    """A record type that has an approval gate but no lifecycle with a gated state (`ModuleDefinition.approval_gates`).
+
+    Attributes:
+        label: The type's singular display name.
+        record_context: `record_context(db, record_id)` returns `(creator id, project id, organisation id)` of the record
+            (the organisation id only for a record the organisation owns), or `None` when the record does not exist or
+            has no creator to separate the approver from. It reads only.
+    """
+
+    label: str
+    record_context: Callable[[Session, uuid.UUID], tuple[uuid.UUID, uuid.UUID | None, uuid.UUID | None] | None]
+
+
+@dataclass(frozen=True)
 class ReviewPolicy:
     """What governance policy adds to the review of one record type in one project: the answer of
     `GovernanceSeam.REVIEW` (`services.review_engine` reads it).
@@ -190,25 +205,56 @@ class DueReview:
 
 @dataclass(frozen=True)
 class ReviewReminder:
-    """One record whose reminder has not yet been sent for its current due date.
+    """One record whose review reminder may still have to be sent for its current due date.
 
     Attributes:
         artefact_id: The record's id.
-        project_id: The project that holds the record.
+        project_id: The project that holds the record, `None` for a record the organisation owns (then `organization_id`
+            is set, no review policy applies and no project default lead is read).
         due_on: The calendar date the review is due.
         title: The record's name, shown in the notification title.
         code: The record's code as it reads outside its project (qualified), shown in the notification body.
         owner: The record's own reviewer, or `None` when it has none.
         lead_days: The record's own reminder lead in days, or `None` to follow the policy and the project.
+        organization_id: The organisation of a record with no project.
+        entity: The `(entity type, entity id)` a notification opens, when it is not the record itself (a review of a
+            standard opens the standard).
+        reminded_for: The due date the "due" reminder was last sent for, or `None`. The engine sends no second "due"
+            reminder for the same date.
+        overdue_reminded_for: The due date the "overdue" reminder was last sent for, or `None`. Used only by a type that
+            sets `ReviewAdapter.overdue_notification_type`.
     """
 
     artefact_id: uuid.UUID
-    project_id: uuid.UUID
+    project_id: uuid.UUID | None
     due_on: date
     title: str
     code: str
     owner: PrincipalRef | None = None
     lead_days: int | None = None
+    organization_id: uuid.UUID | None = None
+    entity: tuple[str, str] | None = None
+    reminded_for: date | None = None
+    overdue_reminded_for: date | None = None
+
+    def __post_init__(self) -> None:
+        if self.project_id is None and self.organization_id is None:
+            raise ValueError("A reminder of a record with no project names its organisation.")
+
+
+@dataclass(frozen=True)
+class ReminderMark:
+    """One reminder the engine has sent, for the adapter to record.
+
+    Attributes:
+        artefact_id: The record's id.
+        due_on: The due date the reminder was sent for.
+        overdue: `True` for the "overdue" reminder, `False` for the "due" one.
+    """
+
+    artefact_id: uuid.UUID
+    due_on: date
+    overdue: bool = False
 
 
 @dataclass(frozen=True)
@@ -221,24 +267,50 @@ class ReviewAdapter:
             the record's next review date (risks). The engine supports both.
         due_reviews: `due_reviews(db, project_id, as_of)` returns the project's records whose review is due on or before
             `as_of`, oldest first. It reads only.
-        pending_reminders: `pending_reminders(db)` returns, across every project, the records whose reminder has not been
-            sent for their current due date and that are open to review (not archived or closed). It reads only. `None`
-            leaves the type's own sweep in charge of its reminders.
-        mark_reminded: `mark_reminded(db, artefact_ids, when)` records that the reminder for each record's current due date
-            has been sent. It flushes and never commits.
-        notification_type: The registered notification type of the reminder; required with `pending_reminders`.
+        pending_reminders: `pending_reminders(db)` returns, across every project, the records whose reminder may still
+            have to be sent for their current due date and that are open to review (not archived or closed). It reads
+            only. `None` leaves the type's own sweep in charge of its reminders.
+        mark_reminded: `mark_reminded(db, marks, when)` records each reminder the engine sent. It flushes and never
+            commits.
+        notification_type: The registered notification type of the "due" reminder; required with `pending_reminders`.
+        overdue_notification_type: The registered notification type of a separate "overdue" reminder, sent once per due
+            date once the date has passed. `None` sends the "due" reminder throughout (requirements).
+        message: `message(reminder, overdue)` returns the notification `(title, body)` of a reminder. `None` uses the
+            engine's wording.
+        fallback_recipients: `fallback_recipients(db, reminder)` returns who is reminded when the record has no reviewer
+            and the policy names no default owner. `None` falls back to the project managers.
+        also_notify: `also_notify(db, reminder)` returns people told of every reminder in addition to the reviewer, the
+            default owner or the fallback (Compliance: its officers). `None` adds nobody.
+        default_lead_days: The type's own reminder lead, used in place of the project's default lead when neither the
+            record nor the policy sets one. `None` follows the project's default.
+        sub_component: The sub-component of the registering module that must also be effective in a project for the
+            adapter to apply; `None` means the module being on is enough.
     """
 
     schedule: Literal["review_record", "next_review_date"]
     due_reviews: Callable[[Session, uuid.UUID, date], Sequence[DueReview]]
     pending_reminders: Callable[[Session], Sequence[ReviewReminder]] | None = None
-    mark_reminded: Callable[[Session, Sequence[uuid.UUID], datetime], None] | None = None
+    mark_reminded: Callable[[Session, Sequence[ReminderMark], datetime], None] | None = None
     notification_type: str | None = None
+    overdue_notification_type: str | None = None
+    message: Callable[[ReviewReminder, bool], tuple[str, str]] | None = None
+    fallback_recipients: Callable[[Session, ReviewReminder], set[uuid.UUID]] | None = None
+    also_notify: Callable[[Session, ReviewReminder], set[uuid.UUID]] | None = None
+    default_lead_days: int | None = None
+    sub_component: str | None = None
 
     def __post_init__(self) -> None:
         reminding = (self.pending_reminders, self.mark_reminded, self.notification_type)
         if any(x is None for x in reminding) and any(x is not None for x in reminding):
             raise ValueError("A review adapter gives pending_reminders, mark_reminded and notification_type together.")
+        if self.pending_reminders is None and any(
+            x is not None
+            for x in (
+                self.overdue_notification_type, self.message, self.fallback_recipients, self.also_notify,
+                self.default_lead_days,
+            )
+        ):
+            raise ValueError("A review adapter that sends no reminders cannot set reminder options.")
 
 
 @dataclass(frozen=True)

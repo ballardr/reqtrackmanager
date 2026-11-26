@@ -1,19 +1,16 @@
 """
 Module: modules.risk_management.alerts
 
-Notifications for Risk Management: a review due or overdue, and a treatment
-verdict that may no longer hold because its artefact changed.
-`NOTIFICATION_TYPES`; `send_review_notifications` (daily sweep, once per
-`review_date`); `on_artefact_changed` (moves `EFFECTIVE` verdicts resting on a
-changed artefact to `NEEDS_REASSESSMENT`). Recipients: the owner (group members
-included), else Risk Managers and project managers; never the actor.
+Notifications for Risk Management: the notification types (a review due or overdue, which `reviews.RISK_REVIEW_ADAPTER`
+hands to the core review engine, and a treatment verdict that may no longer hold because its artefact changed) and
+`on_artefact_changed` (moves `EFFECTIVE` verdicts resting on a changed artefact to `NEEDS_REASSESSMENT`). Recipients: the
+owner (group members included), else Risk Managers and project managers; never the actor.
 """
 
 from __future__ import annotations
 
 import logging
 import uuid
-from datetime import date, timedelta
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
@@ -53,24 +50,24 @@ NOTIFICATION_TYPES: tuple[NotificationTypeDefinition, ...] = (
     NotificationTypeDefinition(TREATMENT_REASSESSMENT_TYPE, "Risk treatment needs reassessment", target_kinds=("record",)),
 )
 
-#: Days before `review_date` that the "due soon" notification is sent.
-REVIEW_DUE_WARNING_DAYS = 7
-
 
 def risk_recipients(db: Session, risk: Risk, version: RiskVersion) -> set[uuid.UUID]:
     """Who should hear about a risk: its owner (every member of an owner group), else the
     project's Risk Managers and project managers, which also covers an owner group with no
     one left to notify. Addressing only, not an authorisation check."""
     owners = principal_recipients(db, [principal_ref(version.owner_type, version.owner_id)])
-    if owners:
-        return owners
+    return owners or manager_recipients(db, risk.project_id)
+
+
+def manager_recipients(db: Session, project_id: uuid.UUID) -> set[uuid.UUID]:
+    """The project's Risk Managers and project managers: who hears about a risk nobody owns."""
     managers = set(db.scalars(
         select(UserModuleRole.user_id).where(
             UserModuleRole.module_key == RISK_MODULE_KEY, UserModuleRole.role_key == "risk_manager",
-            UserModuleRole.project_id == risk.project_id,
+            UserModuleRole.project_id == project_id,
         )
     ).all())
-    return managers | get_effective_project_managers(db, risk.project_id)
+    return managers | get_effective_project_managers(db, project_id)
 
 
 def _notify(
@@ -88,45 +85,6 @@ def _notify(
             db, user, notification_type=kind, title=f"{code}: {title}", body=body.replace("{title}", version.title),
             project_id=risk.project_id, entity_type=RISK_ARTEFACT_TYPE, entity_id=str(risk.id), actor_id=actor_id,
         )
-
-
-def send_review_notifications(db: Session) -> None:
-    """Daily sweep: tells the risk's recipients when a scheduled review is due
-    within `REVIEW_DUE_WARNING_DAYS` or overdue, once per `review_date`. Skips
-    archived and closed risks and projects where Risk Management is switched
-    off. Commits once at the end."""
-    today = date.today()
-    horizon = today + timedelta(days=REVIEW_DUE_WARNING_DAYS)
-    rows = db.execute(
-        select(Risk, RiskVersion).join(RiskVersion, RiskVersion.risk_id == Risk.id).where(
-            RiskVersion.valid_to.is_(None), RiskVersion.review_date.is_not(None), RiskVersion.review_date <= horizon,
-            Risk.is_archived.is_(False), RiskVersion.status != RiskStatus.CLOSED,
-        )
-    ).all()
-    enabled: dict[uuid.UUID, bool] = {}
-    for risk, version in rows:
-        if risk.project_id not in enabled:
-            enabled[risk.project_id] = (
-                db.get(Project, risk.project_id) is not None
-                and is_module_subcomponent_enabled(db, risk.project_id, RISK_MODULE_KEY, RISK_SUBCOMPONENT_KEY)
-            )
-        if not enabled[risk.project_id]:
-            continue
-        due = version.review_date
-        recipients = risk_recipients(db, risk, version)
-        if due < today:
-            if risk.review_overdue_notified_for == due:
-                continue
-            _notify(db, recipients, risk, version, kind=REVIEW_OVERDUE_TYPE, title="review overdue",
-                    body=f'The review of "{{title}}" was due on {due.isoformat()}.')
-            risk.review_overdue_notified_for = due
-        else:
-            if risk.review_due_notified_for == due:
-                continue
-            _notify(db, recipients, risk, version, kind=REVIEW_DUE_TYPE, title="review due soon",
-                    body=f'The review of "{{title}}" is due on {due.isoformat()}.')
-            risk.review_due_notified_for = due
-    db.commit()
 
 
 def on_artefact_changed(db: Session, change: ArtefactChange) -> None:

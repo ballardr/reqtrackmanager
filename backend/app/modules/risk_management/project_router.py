@@ -70,11 +70,12 @@ from app.schemas.type_vocabulary import (
     RestoreTypesOut,
     RestoreTypesRequest,
 )
-from app.services import approval_separation, scoring
+from app.services import approval_separation, review_engine, scoring
 from app.services.audit import log_event
 from app.services.current_versions import current_versions
 from app.services.lifecycles import lifecycle_for
 from app.services.lookups import project_or_404
+from app.services.principals import principal_ref
 from app.services.project_scope import ProjectScope
 from app.services.rbac import lock_row_for_update, require_ai_approvals_enabled, require_project_subcomponent_enabled
 from app.services.tags import TagFilter
@@ -419,13 +420,17 @@ def create_risk_review(
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     """Records a periodic review and sets the date of the next one. The risk's
-    owner (or a member of its owner group) or a Risk Manager may review. A review is immutable;
-    correct a mistake with a newer one. 409 for an archived or closed risk, blank notes, a
-    non-future `next_review_date`, or `confirmed` while a treatment still needs
+    owner (or a member of its owner group), the review policy's default owner when the risk has
+    no owner, or a Risk Manager may review. A review is immutable; correct a mistake with a newer
+    one. 409 for an archived or closed risk, blank notes, a non-future `next_review_date` or one
+    later than the review policy's interval allows, or `confirmed` while a treatment still needs
     reassessment."""
     project = _project(db, project_id)
     risk = _get(db, project_id, risk_id)
-    if not sh.is_risk_owner(db, get_current_risk_version(db, risk.id), current_user.id):
+    version = get_current_risk_version(db, risk.id)
+    if not sh.is_risk_owner(db, version, current_user.id) and not review_engine.may_review_as_default_owner(
+        db, current_user.id, project_id, RISK_ARTEFACT_TYPE, principal_ref(version.owner_type, version.owner_id),
+    ):
         sh.require_risk_manage(db, current_user, project)
     lock_row_for_update(db, Risk, risk.id)
     db.refresh(risk)

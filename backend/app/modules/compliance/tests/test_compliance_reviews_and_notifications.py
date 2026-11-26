@@ -19,7 +19,6 @@ from app.database import SessionLocal
 from app.modules.compliance.scheduler import (
     send_evidence_expiry_notifications,
     send_required_action_due_notifications,
-    send_review_due_notifications,
     send_target_date_notifications,
 )
 from app.modules.compliance.tests.test_compliance_evidence_api import _create_evidence, _setup_project_with_assessment
@@ -31,6 +30,7 @@ from app.modules.compliance.tests.test_project_compliance_api import (
     _project_base,
     _setup_published_standard_with_tree,
 )
+from app.services.review_engine import send_review_reminders as send_review_due_notifications
 from tests.conftest import auth_headers, create_org_admin_in, create_org_user, create_project, login
 
 TODAY = date.today()
@@ -277,7 +277,7 @@ def test_project_review_rbac_composition(client, admin_token, org_id):
 
 def test_project_review_owner_must_be_a_member_of_the_projects_organisation(client, admin_token, org_id):
     """A review's `owner` feeds directly into `scheduler.py`'s daily
-    due-date sweep (`send_review_due_notifications`), which notifies
+    due-date sweep (the core review engine's sweep), which notifies
     whoever it names unconditionally — so a user with no relationship to
     this project's organisation at all must be rejected on both create and
     update, not silently accepted and later used as a scheduled-
@@ -353,7 +353,7 @@ def test_standard_review_rbac_and_lifecycle(client, admin_token, org_id):
 def test_standard_review_owner_must_be_an_org_member(client, admin_token, org_id):
     """Sibling of `test_project_review_owner_must_be_a_member_of_the_
     projects_organisation` — a standard-level review's `owner` feeds the
-    same unconditional `send_review_due_notifications` sweep; here the
+    same review sweep; here the
     review itself is org-scoped rather than project-scoped, so the same
     org-membership guard applies directly rather than via a project's own
     `organization_id`."""

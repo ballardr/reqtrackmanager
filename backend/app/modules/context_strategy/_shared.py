@@ -447,24 +447,48 @@ def require_pain_point_manage_role(db: Session, current_user: User, *, organizat
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a Pain Point Manager (or admin/manager) may do this.")
 
 
-def require_pain_point_decide_permission(
+def pain_point_decide_allowed(
     db: Session, current_user: User, *, organization_id: uuid.UUID, project_id: uuid.UUID
-) -> None:
-    """Gate for the "decide"-tier triage/reject/mark-duplicate/accept/
-    address/close actions — satisfied by (in order): server admin; the
-    `pain_point_manager` module role; or a Fine-Grained Access Control
-    custom-role grant of the unscoped `(pain_point, approve_baseline)`
-    permission atom — mirrors `require_approve_permission`."""
+) -> bool:
+    """Whether `current_user` holds the "decide"-tier right over Pain Points: a server admin, the `pain_point_manager` module
+    role, or a Fine-Grained Access Control custom-role grant of the unscoped `(pain_point, approve_baseline)` permission atom."""
     if current_user.is_server_admin:
-        return
+        return True
     if user_satisfies_module_role(
         db, current_user, MODULE_KEY, "pain_point_manager", organization_id=organization_id, project_id=project_id,
     ):
-        return
+        return True
     held = get_effective_permissions(db, current_user.id, organization_id=organization_id, project_id=project_id)
-    if permission_satisfied(held, PAIN_POINT_DECIDE_PERMISSION):
-        return
-    raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions.")
+    return permission_satisfied(held, PAIN_POINT_DECIDE_PERMISSION)
+
+
+def require_pain_point_decide_permission(
+    db: Session, current_user: User, *, organization_id: uuid.UUID, project_id: uuid.UUID
+) -> None:
+    """Gate for the "decide"-tier triage/reject/mark-duplicate/address/close actions (`pain_point_decide_allowed`); accepting
+    is the type's approval step and goes through `require_pain_point_acceptor`.
+
+    Raises:
+        HTTPException: 403 when the person lacks the right.
+    """
+    if not pain_point_decide_allowed(db, current_user, organization_id=organization_id, project_id=project_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions.")
+
+
+def require_pain_point_acceptor(
+    db: Session, current_user: User, *, organization_id: uuid.UUID, project_id: uuid.UUID
+) -> None:
+    """Gate for accepting a Pain Point, made through `services.approval_policy`: the "decide"-tier right, or a role the
+    project's approval policy names.
+
+    Raises:
+        HTTPException: 403 when the person may not accept.
+    """
+    approval_policy.require_approver(
+        db, current_user, artefact_type=PAIN_POINT_ARTEFACT_TYPE, organization_id=organization_id, project_id=project_id,
+        default=pain_point_decide_allowed(db, current_user, organization_id=organization_id, project_id=project_id),
+        denied="Insufficient permissions.",
+    )
 
 
 # --- Guiding Principles --------------------------------------------

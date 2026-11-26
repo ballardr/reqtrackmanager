@@ -51,6 +51,18 @@ if staged_matches '\.(py|ts|tsx|js|mjs|css|sh|ya?ml|toml|ini|caddy)$|(^|/)(Docke
   }
 fi
 
+# A registered record type needs a lifecycle or a stated reason; see backend/scripts/check_governed_records.py. `--staged` checks only
+# the modules that own a staged file (every type when the registry or a core registration file is staged). It needs the backend
+# dependencies, so it uses the repository virtualenv when there is one and skips with a note otherwise; CI runs the full check.
+if staged_matches '^backend/(app/modules/|app/services/lifecycles_core\.py|scripts/check_governed_records\.py)'; then
+  GOVERNED_PYTHON="$(git rev-parse --show-toplevel)/.venv/bin/python"
+  [[ -x "$GOVERNED_PYTHON" ]] || GOVERNED_PYTHON=python3
+  "$GOVERNED_PYTHON" "$(git rev-parse --show-toplevel)/backend/scripts/check_governed_records.py" --staged || {
+    echo "pre-commit: register a lifecycle (ModuleDefinition.lifecycles) or give a reason (ModuleDefinition.no_lifecycle) for the type(s) above, re-stage, and retry." >&2
+    exit 1
+  }
+fi
+
 # Performance results are git-ignored; one force-added to a public repository must carry nothing identifying (perf/scrub_check.py).
 # Only tracked and staged files are checked: the directory also holds local bundles and copied-in archives that no commit publishes.
 if staged_matches '^perf/results/'; then

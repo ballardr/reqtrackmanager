@@ -12,7 +12,7 @@ preferences API and the declared MCP tools.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
@@ -23,7 +23,6 @@ from app.modules.risk_management.alerts import (
     REVIEW_DUE_TYPE,
     REVIEW_OVERDUE_TYPE,
     TREATMENT_REASSESSMENT_TYPE,
-    send_review_notifications,
 )
 from app.modules.risk_management.tests._helpers import (
     add_effective_treatment,
@@ -40,6 +39,7 @@ from app.modules.risk_management.tests._helpers import (
     setup,
     user_ref,
 )
+from app.services import review_engine
 from tests.conftest import auth_headers, create_project
 from tests.db_helpers import audit_detail
 
@@ -49,7 +49,7 @@ def _url(project_id, risk_id) -> str:
 
 
 def _tomorrow_plus(days: int) -> str:
-    return (date.today() + timedelta(days=days)).isoformat()
+    return (datetime.now(UTC).date() + timedelta(days=days)).isoformat()
 
 
 def _review(client, token, project_id, risk_id, *, outcome="confirmed", notes="Still valid.", next_review=None, **extra):
@@ -75,7 +75,7 @@ def _notifications(client, token, kind: str | None = None) -> list[dict]:
 def _sweep() -> None:
     db = SessionLocal()
     try:
-        send_review_notifications(db)
+        review_engine.send_review_reminders(db)
     finally:
         db.close()
 

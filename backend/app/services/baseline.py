@@ -44,7 +44,7 @@ from app.modules.seams import BaselineCheckContext, BaselineCheckProvider, Basel
 from app.services import approval_separation, governance_seams
 from app.services.component_stages import tracked_component_ids
 from app.services.rbac import can_manage_project_settings, get_effective_permissions, permission_satisfied
-from app.services.requirements import apply_new_version, get_current_version_for_update
+from app.services.requirements import apply_new_version, check_status_move, get_current_version_for_update
 
 REQUIREMENT_ITEM_TYPE = "requirement"
 
@@ -354,6 +354,7 @@ def create_baseline_for_stage(
             # deadlock), and it is re-read under the lock: a concurrent edit may have moved it on.
             current_version = get_current_version_for_update(db, requirement.id)
         if current_version.status in (RequirementStatus.DRAFT, RequirementStatus.REVIEWED):
+            check_status_move(db, project.id, requirement.id, current_version.status, RequirementStatus.APPROVED)
             approval_separation.enforce_approval(
                 db, user=actor, artefact_type="requirement", record_id=requirement.id,
                 creator_id=requirement.creator_id, organization_id=project.organization_id, project_id=project.id,

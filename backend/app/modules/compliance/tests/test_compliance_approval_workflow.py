@@ -89,7 +89,8 @@ def test_submit_approve_happy_path(client, admin_token, org_id):
         _pcr_path(project["id"], assignment["id"], pcr_id, "/history"), headers=auth_headers(admin_token)
     ).json()
     actions = [e["action"] for e in history]
-    assert actions == ["assessed", "submitted_for_approval", "approved"]
+    # The same person assessed and approved, which approval separation records as a self-approval beside the approval.
+    assert actions == ["assessed", "submitted_for_approval", "self_approved", "approved"]
 
 
 def test_reject_requires_decision_note_and_records_it(client, admin_token, org_id):

@@ -8,6 +8,8 @@ Assessing a project once isn't the end of the story — a standard's own require
 
 ## Scheduled reviews
 
+The review reminders are sent by the same daily sweep as the reminders of other record types. A project's Governance review policy can set the reminder lead and a default owner for its project reviews; a default owner is told in addition to the Compliance Officers when a review has no owner. A review of a standard belongs to the organisation, so no project policy applies to it.
+
 A standard itself, or a project's assignment to one, can have one or more scheduled reviews, each carrying:
 
 - A **frequency label** (e.g. quarterly, annually) describing the intended cadence.
@@ -26,7 +28,7 @@ Daily background sweeps notify the relevant Compliance Officers/Managers about t
 | --- | --- | --- |
 | Evidence approaching or past expiry | Compliance Officers/Managers with access to the project | The evidence's own expiry date enters its "expiring soon" window, or passes |
 | Required action approaching or past its due date | The action's assignee (every member, when it is a group), or Compliance Officers/Managers when it has none | The action's due date enters its "approaching" window, or passes |
-| Scheduled review coming due or overdue | The review's owner (every member, when it is a group), plus Compliance Officers/Managers | The review's next-due date enters its "coming due" window, or passes |
+| Scheduled review coming due or overdue | The review's owner (every member, when it is a group), plus Compliance Officers/Managers | The review's next-due date enters its "coming due" window (14 days, or the lead the project's Governance review policy sets), or passes |
 | Project's target compliance date approaching or passed | Compliance Officers/Managers with access to the project | The project's own target date (where set) enters its "approaching" window, or passes |
 | A requirement assessed Non-Compliant | Compliance Officers/Managers with access to the project | The compliance status changes to Non-Compliant |
 | An approval request, or an approval invalidated by a material change | The relevant approver, or Compliance Officers/Managers | A requirement is submitted for approval, or a previously Approved/Pending requirement is flagged Requires Re-assessment (see [Approval/sign-off](./assessing-a-project.md#the-five-things-an-assessment-tracks)) |

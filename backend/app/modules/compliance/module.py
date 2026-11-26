@@ -61,6 +61,7 @@ from uuid import UUID
 from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
+from app.modules.compliance.approval import ASSESSMENT_APPROVAL_GATES
 from app.modules.compliance.long_text import MARKDOWN_FIELDS, PLAIN_TEXT_FIELDS
 from app.modules.compliance.models import (
     ARTEFACT_TYPE_EVIDENCE,
@@ -79,6 +80,7 @@ from app.modules.compliance.record_attachments import NO_RECORD_ATTACHMENTS, REC
 from app.modules.compliance.record_tables import NOT_CREATABLE_FROM_LINKS, NOT_IMPORTABLE, NOT_PLACEABLE, RECORD_TABLES
 from app.modules.compliance.report_fields import REPORT_FIELDS
 from app.modules.compliance.report_starters import REPORT_STARTER_SECTIONS
+from app.modules.compliance.review_adapter import COMPLIANCE_REVIEW_ADAPTER, REVIEW_ARTEFACT_TYPE
 from app.modules.compliance.scaling_probes import SCALING_PROBES
 from app.modules.compliance.search import SEARCH_PROVIDERS, SEARCH_SCOPES
 from app.modules.compliance.service import (
@@ -335,12 +337,6 @@ def _run_evidence_expiry_notifications(db: Session) -> None:
     send_evidence_expiry_notifications(db)
 
 
-def _run_review_due_notifications(db: Session) -> None:
-    from app.modules.compliance.scheduler import send_review_due_notifications
-
-    send_review_due_notifications(db)
-
-
 def _run_required_action_due_notifications(db: Session) -> None:
     from app.modules.compliance.scheduler import send_required_action_due_notifications
 
@@ -433,6 +429,25 @@ MODULE_DEFINITION = ModuleDefinition(
     get_router=get_router,
     get_project_router=get_project_router,
     get_global_router=get_global_router,
+    approval_gates=ASSESSMENT_APPROVAL_GATES,
+    no_lifecycle={
+        "compliance_requirement": (
+            "A requirement of a standard version has no status of its own: its version is Draft, Published or Retired, "
+            "an immutability switch of the organisation's standard."
+        ),
+        "compliance_evidence": (
+            "Evidence has a validity state derived from its expiry date and archive flag, not a path of steps a person "
+            "moves it along."
+        ),
+        "compliance_required_action_assessment": (
+            "A required action's assessment is complete or not, with a due date; it has no path of steps."
+        ),
+        "project_compliance_requirement": (
+            "The assessment's approval state is its own column with automatic resets on reassessment; its approval takes "
+            "the approval engine through `approval_gates`."
+        ),
+    },
+    review_adapters={REVIEW_ARTEFACT_TYPE: COMPLIANCE_REVIEW_ADAPTER},
     models_import_path="app.modules.compliance.models",
     migrations_dir="app/modules/compliance/migrations",
     # One tile per standard assigned to the project (and, where widened, its related projects); the frontend renders it.
@@ -529,7 +544,6 @@ MODULE_DEFINITION = ModuleDefinition(
         ModuleScheduledJob(
             job_id="evidence_expiry_reminders", hour=2, minute=0, run=_run_evidence_expiry_notifications
         ),
-        ModuleScheduledJob(job_id="review_due_reminders", hour=2, minute=15, run=_run_review_due_notifications),
         ModuleScheduledJob(
             job_id="required_action_due_reminders", hour=2, minute=30, run=_run_required_action_due_notifications
         ),

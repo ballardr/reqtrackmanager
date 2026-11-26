@@ -195,6 +195,8 @@ def create_requirement(
             independent); a fresh code is numbered from the project counter when omitted.
         change_note: The first version's note.
     """
+    if review_date is not None:
+        check_review_date_policy(db, project.id, review_date)
     unique_code = unique_code or generate_unique_code(db, project, component, category)
     requirement = Requirement(
         project_id=project.id, component_id=component.id, category_id=category.id,
@@ -220,6 +222,60 @@ def create_requirement(
         tag_service.set_keywords(db, requirement, keywords, creator.id)
 
     return requirement
+
+
+def check_status_move(
+    db: Session, project_id: UUID, requirement_id: UUID, current: RequirementStatus, target: RequirementStatus,
+) -> None:
+    """Refuses a status move the project's requirement lifecycle does not allow.
+
+    A move to the status the requirement already has is not a move. The lifecycle is the engine's
+    (`services.lifecycles.check_move`): the path, the states the project turned off, the states the organisation
+    requires and an explicit request to skip steps.
+
+    Args:
+        db: Active session (a skip writes one audit event; not committed).
+        project_id: The requirement's project.
+        requirement_id: The requirement.
+        current: Its current status.
+        target: The status it is moved to.
+
+    Raises:
+        HTTPException: 409 naming the allowed next states when the move is not legal here; 403 when a skip passes over
+            a step the person may not enter.
+    """
+    from app.services.lifecycles import check_move
+
+    if current == target:
+        return
+    try:
+        check_move(db, project_id, "requirement", current.value, target.value, record_id=requirement_id)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+
+
+def check_review_date_policy(db: Session, project_id: UUID, review_date: date) -> None:
+    """Refuses a review date later than the project's review policy allows.
+
+    The policy's interval is the longest gap between two reviews, so a review date a person sets may be no later than
+    that many days from the caller's day. No interval, no cap.
+
+    Args:
+        db: Active session (read only).
+        project_id: The requirement's project.
+        review_date: The review date being set.
+
+    Raises:
+        HTTPException: 422 naming the latest allowed date.
+    """
+    from app.services import review_engine
+    from app.services.client_date import effective_today
+
+    today = effective_today()
+    try:
+        review_engine.check_next_review_date(review_engine.review_policy(db, project_id, "requirement"), today, review_date)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
 
 
 def apply_new_version(
@@ -270,6 +326,8 @@ def apply_new_version(
     `on_artefact_changed` hook is told (`services.artefact_changes`), so anything
     that depends on the requirement can be flagged for review.
     """
+    if review_date_explicitly_set and review_date is not None and review_date != current_version.review_date:
+        check_review_date_policy(db, requirement.project_id, review_date)
     now = datetime.now(UTC)
     current_version.valid_to = now
     requirement.updated_at = now  # a new version is a change to the record: its Modified time moves
@@ -858,14 +916,17 @@ def edit_requirement(
         The new version.
 
     Raises:
-        HTTPException: 409 when the requirement is approved (changes then go through a change request); 400/422
-            for a custom field value, person, component or category that is not valid for the project.
+        HTTPException: 409 when the requirement is approved (changes then go through a change request) or the status
+            move is not legal in the project's lifecycle; 400/422 for a custom field value, person, component or
+            category that is not valid for the project, or a review date later than the review policy allows.
     """
     from app.services import requirement_aliases  # imported here: that module builds on this one
 
     current_version = get_current_version_for_update(db, requirement.id)
     if is_locked(current_version):
         raise HTTPException(status.HTTP_409_CONFLICT, "This requirement is approved; changes must be made via a change request.")
+    if status_value is not None:
+        check_status_move(db, project.id, requirement.id, current_version.status, status_value)
     validated = (
         validate_custom_field_values(db, project.id, CustomFieldEntityKind.REQUIREMENT, custom_fields)
         if custom_fields is not None else None

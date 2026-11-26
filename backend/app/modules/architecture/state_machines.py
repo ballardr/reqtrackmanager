@@ -41,6 +41,7 @@ from app.models.user import User
 from app.modules.architecture import state_machine_checks as checks
 from app.modules.architecture.diagrams import _check_new_element, leaders_of, machine_notes_of, note_out, sync_notes
 from app.modules.architecture.enums import AttachPoint, LabelPosition, LeaderKind, LineShape, RecordStatus, StateKind, ValidationSeverity
+from app.modules.architecture.lifecycles import ProjectMoves
 from app.modules.architecture.models import (
     ArchitectureDiagramNote,
     ArchitectureElement,
@@ -49,7 +50,7 @@ from app.modules.architecture.models import (
     ArchitectureStateMachineDiagram,
     ArchitectureTransition,
 )
-from app.modules.architecture.records import RuleError, _check_version, _detail, _forget, _touch
+from app.modules.architecture.records import RuleError, _check_version, _detail, _forget, _touch, require_lifecycle_move
 from app.modules.architecture.schemas import (
     NoteIn,
     StateCreate,
@@ -71,7 +72,7 @@ from app.modules.architecture.service import (
     STATE_MACHINE_ARTEFACT_TYPE,
     STATE_MACHINE_CODE_PREFIX,
 )
-from app.modules.architecture.transitions import allowed_moves, move_refusal
+from app.modules.architecture.transitions import move_refusal
 from app.modules.architecture.visibility import Viewer, visible_element_ids
 from app.services.audit import log_event
 from app.services.sequences import generate_unique_code
@@ -280,6 +281,7 @@ def change_state_machine_status(
     refusal = move_refusal(diagram.status, status)
     if refusal:
         raise RuleError(refusal, 409)
+    require_lifecycle_move(db, project.id, STATE_MACHINE_ARTEFACT_TYPE, diagram.id, diagram.status, status)
     if status == RecordStatus.ACTIVE:
         require_sound(db, diagram)
     previous = diagram.status
@@ -775,6 +777,7 @@ def state_machine_outs(
     """API shapes for `diagrams`: state and transition counts, validation counts and elements are read in bulk, so the cost
     does not grow with the list."""
     ids = [d.id for d in diagrams]
+    moves = ProjectMoves(db, STATE_MACHINE_ARTEFACT_TYPE)
 
     def counts(model: Any) -> dict[uuid.UUID, int]:
         if not ids:
@@ -794,7 +797,7 @@ def state_machine_outs(
         out.append(StateMachineDiagramOut(
             id=d.id, project_id=d.project_id, unique_code=d.unique_code, name=d.name, description=d.description,
             element_id=d.element_id, element_code=code, element_name=name, line_hops=d.line_hops, line_shape=LineShape(d.line_shape), status=d.status,
-            allowed_status_moves=allowed_moves(d.status), version=d.version, creator_id=d.creator_id,
+            allowed_status_moves=moves.of(d.project_id, d.status), version=d.version, creator_id=d.creator_id,
             is_archived=d.is_archived, archived_at=d.archived_at, created_at=d.created_at, updated_at=d.updated_at,
             state_count=state_counts.get(d.id, 0), transition_count=transition_counts.get(d.id, 0),
             error_count=sum(1 for f in issues if f.severity == ValidationSeverity.ERROR),

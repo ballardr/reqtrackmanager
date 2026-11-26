@@ -4,9 +4,9 @@ standard, and a standard-level review (which has no project) names the standard 
 from datetime import date, timedelta
 
 from app.database import SessionLocal
-from app.modules.compliance.scheduler import send_review_due_notifications
 from app.modules.compliance.tests.test_compliance_standards_api import _base
 from app.modules.compliance.tests.test_project_compliance_api import _setup_published_standard_with_tree
+from app.services.review_engine import send_review_reminders as send_review_due_notifications
 from tests.conftest import auth_headers, create_org_user, login
 
 TODAY = date.today()

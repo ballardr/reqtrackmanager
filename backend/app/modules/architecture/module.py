@@ -52,6 +52,7 @@ from app.modules.architecture.allocation_metrics import OVERVIEW_METRICS
 from app.modules.architecture.baseline_snapshot import SNAPSHOT_PROVIDERS
 from app.modules.architecture.collections import COLLECTION_ENTITY_TYPE
 from app.modules.architecture.comments import RECORD_COMMENTS
+from app.modules.architecture.lifecycles import LIFECYCLES
 from app.modules.architecture.long_text import MARKDOWN_FIELDS, PLAIN_TEXT_FIELDS
 from app.modules.architecture.mcp_tools import build_mcp_tools
 from app.modules.architecture.models import (
@@ -200,6 +201,10 @@ MODULE_DEFINITION = ModuleDefinition(
         "architecture_domain": "structure",
     },
     artefact_types=_ALL,
+    lifecycles=LIFECYCLES,
+    no_lifecycle={
+        "architecture_state": "A state is a drawn part of a state machine diagram and follows the status of its diagram.",
+    },
     default_code_prefixes={
         ELEMENT_ARTEFACT_TYPE: ELEMENT_CODE_PREFIX, CONNECTION_ARTEFACT_TYPE: CONNECTION_CODE_PREFIX,
         DIAGRAM_ARTEFACT_TYPE: DIAGRAM_CODE_PREFIX, STATE_MACHINE_ARTEFACT_TYPE: STATE_MACHINE_CODE_PREFIX,

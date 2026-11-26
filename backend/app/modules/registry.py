@@ -33,6 +33,7 @@ from sqlalchemy.orm import DeclarativeBase, Session
 from app.config import get_settings
 from app.models.enums import LinkFlow, LinkNestingScope
 from app.modules.seams import (
+    ApprovalGateDefinition,
     BaselineCheckProvider,
     GovernanceSeam,
     HealthProvider,
@@ -2585,6 +2586,13 @@ class ModuleDefinition:
             to a `RecordSubtypeResolver` returning each record's sub-type key, so a rule or policy can say "a
             Verification action" without core knowing the module (`resolve_record_subtypes`).
         review_adapters: Maps an artefact type to the `ReviewAdapter` the review engine reads its schedule through.
+        lifecycles / no_lifecycle: `LifecycleDefinition`s for the record types that move through states, or `{type: reason}`
+            for a registered type that does not (it has no status path, or the path is a part of another record). A backend
+            test fails for a registered type with neither.
+        approval_gates: Maps a record type that has an approval gate but no lifecycle with a gated state (a record whose
+            approval state is its own column) to its `ApprovalGateDefinition`. The type then takes part in approval
+            separation and approval policy like every gated type; its endpoints call `services.approval_policy` and
+            `services.approval_separation` themselves.
         baseline_check_providers: `BaselineCheckProvider`s run before a baseline is taken
             (`services.governance_seams.baseline_checks_for_project`).
         policy_resolvers: `PolicyResolver`s answering which policy applies at each core `GovernanceSeam`
@@ -2679,6 +2687,8 @@ class ModuleDefinition:
     administrative_permissions: tuple[ModuleAdministrativePermission, ...] = field(default=())
     record_subtypes: dict[str, RecordSubtypeResolver] = field(default_factory=dict)
     review_adapters: dict[str, ReviewAdapter] = field(default_factory=dict)
+    approval_gates: dict[str, ApprovalGateDefinition] = field(default_factory=dict)
+    no_lifecycle: dict[str, str] = field(default_factory=dict)
     baseline_check_providers: tuple[BaselineCheckProvider, ...] = field(default=())
     policy_resolvers: tuple[PolicyResolver, ...] = field(default=())
     profile_contributors: tuple[ProfileContributor, ...] = field(default=())
@@ -4460,6 +4470,25 @@ def get_lifecycles() -> dict[str, tuple[str, LifecycleDefinition]]:
     for key, definition in get_module_registry().items():
         for artefact_type, lifecycle in definition.lifecycles.items():
             merged.setdefault(artefact_type, (key, lifecycle))
+    return merged
+
+
+def get_no_lifecycle_types() -> dict[str, str]:
+    """`{artefact type: reason}` for every type a module or core declared has no lifecycle."""
+    from app.services.lifecycles_core import CORE_NO_LIFECYCLE
+
+    reasons: dict[str, str] = dict(CORE_NO_LIFECYCLE)
+    for definition in get_module_registry().values():
+        reasons.update(definition.no_lifecycle)
+    return reasons
+
+
+def get_module_approval_gates() -> dict[str, tuple[str, ApprovalGateDefinition]]:
+    """`{record type: (module key, gate)}` for every module's `approval_gates`. A type claimed twice keeps the first."""
+    merged: dict[str, tuple[str, ApprovalGateDefinition]] = {}
+    for key, definition in get_module_registry().items():
+        for artefact_type, gate in definition.approval_gates.items():
+            merged.setdefault(artefact_type, (key, gate))
     return merged
 
 

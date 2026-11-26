@@ -49,6 +49,7 @@ from app.modules.context_strategy._shared import (
     require_manage_role,
     require_open_question_manage_role,
     require_open_question_resolve_permission,
+    require_pain_point_acceptor,
     require_pain_point_decide_permission,
     require_pain_point_manage_role,
     strategy_to_out,
@@ -251,6 +252,7 @@ from app.modules.context_strategy.submission_policy import (
 )
 from app.schemas.file import FileAssetOut
 from app.schemas.type_vocabulary import HiddenTypeOut, RestoreTypesOut, RestoreTypesRequest
+from app.services import approval_separation
 from app.services.audit import log_event
 from app.services.current_versions import current_versions
 from app.services.files import delete_file, upload_file
@@ -1703,7 +1705,12 @@ def accept_project_pain_point(
 ):
     project = project_or_404(db, project_id)
     pain_point = _get_pain_point(db, project_id, pain_point_id)
-    require_pain_point_decide_permission(db, current_user, organization_id=project.organization_id, project_id=project_id)
+    require_pain_point_acceptor(db, current_user, organization_id=project.organization_id, project_id=project_id)
+    approval_separation.enforce_approval(
+        db, user=current_user, artefact_type=PAIN_POINT_ARTEFACT_TYPE, record_id=pain_point.id,
+        creator_id=pain_point.creator_id, organization_id=project.organization_id, project_id=project_id,
+        comment=payload.comment,
+    )
     apply_value_error_as_conflict(accept_pain_point, db, pain_point, current_user, comment=payload.comment)
     db.commit()
     return pain_point_to_out(db, pain_point)

@@ -28,7 +28,7 @@ from tests.db_helpers import must_get
 
 def test_compliance_module_is_registered_with_org_and_project_roles():
     """Compliance is a permanent entry in `INSTALLED_MODULES` with an organisation router, a project router, a
-    `resolve_file_owner_project_id` hook, four scheduled jobs and its declared MCP tools (the API surfaces are tested in
+    `resolve_file_owner_project_id` hook, three scheduled jobs and a review adapter and its declared MCP tools (the API surfaces are tested in
     the sibling `test_compliance_*` and `test_project_compliance_api.py` files). The MCP surface is write-enabled except
     the review-outcome tools (`complete_project_review`, `complete_standard_review`), which are MCP-excluded, and
     approvals (gated), RBAC and file-upload endpoints (undeclared); see `module.py` and `docs/decisions.md`."""
@@ -78,7 +78,10 @@ def test_compliance_module_is_registered_with_org_and_project_roles():
         "declare no tool"
     )
     assert definition.resolve_file_owner_project_id is not None, "the evidence file-ownership hook is registered"
-    assert len(definition.scheduled_jobs) == 4, "four date-driven notification sweeps are registered"
+    assert [j.job_id for j in definition.scheduled_jobs] == [
+        "evidence_expiry_reminders", "required_action_due_reminders", "target_date_reminders",
+    ], "three date-driven notification sweeps are registered; the review reminders run in the core review engine"
+    assert "compliance_review" in definition.review_adapters
 
     roles_by_key = {role.role_key: role for role in definition.roles}
     assert set(roles_by_key) == {

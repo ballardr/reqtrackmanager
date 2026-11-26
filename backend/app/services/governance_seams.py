@@ -108,4 +108,4 @@ def review_adapter_for_project(db: Session, project_id: uuid.UUID, artefact_type
     if entry is None:
         return None
     module_key, adapter = entry
-    return adapter if registration_active(db, project_id, module_key, None) else None
+    return adapter if registration_active(db, project_id, module_key, adapter.sub_component) else None

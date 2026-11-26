@@ -20,13 +20,14 @@ from app.deps import get_request_channel
 from app.models.audit import AuditEvent
 from app.models.notification import NotificationType
 from app.models.user import User
+from app.modules.compliance.approval import require_assessment_approver
 from app.modules.compliance.enums import ComplianceApprovalState
 from app.modules.compliance.models import ARTEFACT_TYPE_EVIDENCE, ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT, ComplianceEvidence
 from app.modules.compliance.project_router._shared import _get_pcr_or_404, _require_officer, _require_view
 from app.modules.compliance.schemas import ComplianceApprovalDecisionRequest, ComplianceEvidenceOut, ProjectComplianceRequirementOut
 from app.modules.compliance.service import build_evidence_out, build_requirement_out, get_effective_compliance_officers, load_pcrs_and_applicability
 from app.schemas.audit import AuditEventOut
-from app.services import notifications, relationships
+from app.services import approval_separation, notifications, relationships
 from app.services.audit import log_event
 from app.services.lookups import project_or_404
 from app.services.rbac import require_ai_approvals_enabled
@@ -84,14 +85,18 @@ def submit_requirement_for_approval(
 )
 def approve_requirement(
     project_id: UUID, project_compliance_id: UUID, pcr_id: UUID, payload: ComplianceApprovalDecisionRequest,
-    current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
     channel: str = Depends(get_request_channel),
 ):
-    """Formally approves and signs off this requirement's assessment (§12): `PENDING_APPROVAL` -> `APPROVED`. Gated like
-    every mutating endpoint on this router (`compliance_officer` or `PROJECT_MANAGER`): §11 and §26 name no separate
-    approver role. Reached through the MCP server (`channel == "mcp"`) it also requires the project and its organisation
-    to have enabled AI approval (`require_ai_approvals_enabled`), as core's `requirements.approve_requirement` and
+    """Formally approves and signs off this requirement's assessment (§12): `PENDING_APPROVAL` -> `APPROVED`. Gated
+    through `services.approval_policy` (`compliance.approval.require_assessment_approver`): a `compliance_officer` or
+    `PROJECT_MANAGER` as for every mutating endpoint on this router (§11 and §26 name no separate approver role), plus a
+    role the project's approval policy names or a holder of the type's `approve_baseline` permission. The person who
+    assessed it may approve it unless approval separation requires another approver. Reached through the MCP server
+    (`channel == "mcp"`) it also requires the project and its organisation to have enabled AI approval
+    (`require_ai_approvals_enabled`), as core's `requirements.approve_requirement` and
     `change_requests.decide_change_request` do; a UI or API call is unaffected."""
+    require_assessment_approver(db, current_user, project_id)
     project_compliance, pcr = _get_pcr_or_404(db, project_id, project_compliance_id, pcr_id)
     if channel == "mcp":
         require_ai_approvals_enabled(db, project_or_404(db, project_id))
@@ -100,6 +105,12 @@ def approve_requirement(
             status.HTTP_409_CONFLICT,
             f"Cannot approve from state '{pcr.approval_state.value}'; the requirement must be "
             "'pending_approval' first.",
+        )
+    if pcr.assessed_by is not None:
+        approval_separation.enforce_approval(
+            db, user=current_user, artefact_type=ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT, record_id=pcr.id,
+            creator_id=pcr.assessed_by, organization_id=project_or_404(db, project_id).organization_id,
+            project_id=project_id, comment=payload.decision_note,
         )
     pcr.approval_state = ComplianceApprovalState.APPROVED
     pcr.approval_decided_at = datetime.now(UTC)
@@ -128,12 +139,13 @@ def approve_requirement(
 )
 def reject_requirement(
     project_id: UUID, project_compliance_id: UUID, pcr_id: UUID, payload: ComplianceApprovalDecisionRequest,
-    current_user: User = Depends(_require_officer), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
     channel: str = Depends(get_request_channel),
 ):
     """Formally rejects this requirement's assessment (§12): `PENDING_APPROVAL` -> `REJECTED`. `decision_note` is
     mandatory (400), as for Non-Compliant and Not Applicable decisions (§16), so a rejection always says why. Gated like
-    `approve_requirement`, including the MCP gate."""
+    `approve_requirement`, including the MCP gate; approval separation does not apply to a rejection."""
+    require_assessment_approver(db, current_user, project_id)
     project_compliance, pcr = _get_pcr_or_404(db, project_id, project_compliance_id, pcr_id)
     if channel == "mcp":
         require_ai_approvals_enabled(db, project_or_404(db, project_id))

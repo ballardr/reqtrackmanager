@@ -34,19 +34,14 @@ from sqlalchemy.orm import Session
 from app.models.notification import NotificationType
 from app.models.project import Project
 from app.models.user import User
-from app.modules.compliance.enums import ComplianceReviewStatus
 from app.modules.compliance.models import (
     ComplianceEvidence,
     ComplianceRequiredActionAssessment,
-    ComplianceReview,
-    ComplianceStandard,
     ProjectCompliance,
     ProjectComplianceRequirement,
 )
 from app.modules.compliance.service import (
-    COMPLIANCE_REVIEW_DUE_WARNING_DAYS,
     EVIDENCE_EXPIRY_WARNING_DAYS,
-    get_effective_compliance_managers,
     get_effective_compliance_officers,
 )
 from app.services import notifications
@@ -118,64 +113,6 @@ def send_evidence_expiry_notifications(db: Session) -> None:
                 project_id=evidence.project_id, entity_type="compliance_evidence", entity_id=str(evidence.id),
             )
             evidence.expiry_reminder_sent_at = datetime.now(UTC)
-
-    db.commit()
-
-
-def send_review_due_notifications(db: Session) -> None:
-    """Daily sweep (§17, §18, §28): notifies the relevant compliance
-    officers/managers (plus the review's owner, if set: the user, or every
-    member of the owning group) when a
-    `SCHEDULED` `ComplianceReview` becomes due or overdue, at most once per
-    notification per current `next_due_date` (`ComplianceReview.due_
-    reminder_sent_at`/`overdue_notified_at`). Covers both standard-level
-    and project-level reviews — see `models.py`'s own docstring for why a
-    review has exactly one of the two owners."""
-    today = date.today()
-    reviews = db.scalars(select(ComplianceReview).where(ComplianceReview.status == ComplianceReviewStatus.SCHEDULED)).all()
-
-    for review in reviews:
-        recipients: set[UUID] = set()
-        project_id: UUID | None = None
-        organization_id: UUID | None = None
-
-        if review.project_compliance_id is not None:
-            project_compliance = db.get(ProjectCompliance, review.project_compliance_id)
-            if project_compliance is None:
-                continue
-            project_id = project_compliance.project_id
-            recipients = get_effective_compliance_officers(db, project_id)
-            entity_type, entity_id = "compliance_review", str(review.id)
-        else:
-            standard = db.get(ComplianceStandard, review.standard_id)
-            if standard is None:
-                continue
-            organization_id = standard.organization_id
-            recipients = get_effective_compliance_managers(db, organization_id)
-            # A standard-level review has no project, so it names the standard it opens.
-            entity_type, entity_id = "compliance_standard", str(standard.id)
-        recipients |= principal_recipients(db, [principal_ref(review.owner_type, review.owner_id)])
-
-        if review.next_due_date < today:
-            if review.overdue_notified_at is not None:
-                continue
-            _notify_many(
-                db, recipients, notification_type=NotificationType.COMPLIANCE_REVIEW_OVERDUE,
-                title=f"Compliance review overdue: {review.frequency_label}",
-                body=f"A scheduled compliance review was due on {review.next_due_date.isoformat()}.",
-                project_id=project_id, entity_type=entity_type, entity_id=entity_id,
-            )
-            review.overdue_notified_at = datetime.now(UTC)
-        elif review.next_due_date <= today + timedelta(days=COMPLIANCE_REVIEW_DUE_WARNING_DAYS):
-            if review.due_reminder_sent_at is not None:
-                continue
-            _notify_many(
-                db, recipients, notification_type=NotificationType.COMPLIANCE_REVIEW_DUE,
-                title=f"Compliance review due soon: {review.frequency_label}",
-                body=f"A scheduled compliance review is due on {review.next_due_date.isoformat()}.",
-                project_id=project_id, entity_type=entity_type, entity_id=entity_id,
-            )
-            review.due_reminder_sent_at = datetime.now(UTC)
 
     db.commit()
 

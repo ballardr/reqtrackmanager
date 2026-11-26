@@ -40,6 +40,7 @@ from app.services.actions import generate_unique_code as generate_action_unique_
 from app.services.audit import log_event
 from app.services.change_request_links import build_preview, decline_all, resolve_links
 from app.services.codes import qualify
+from app.services.lifecycles import check_move
 from app.services.lookups import get_or_404, project_or_404
 from app.services.principals import revalidated_principal, revalidated_principal_columns
 from app.services.rbac import (
@@ -57,6 +58,26 @@ from app.services.requirements import (
     get_current_version,
     get_current_version_for_update,
 )
+
+
+def _check_move(db: Session, cr: ChangeRequest, target: ChangeRequestStatus) -> None:
+    """Refuses (409) a status move of the change request that the project's lifecycle for change requests does not allow.
+
+    Args:
+        db: Active session.
+        cr: The change request, in its current status.
+        target: The status it is moved to; a move to the status it already has is not a move.
+
+    Raises:
+        HTTPException: 409 naming the allowed next states.
+    """
+    if cr.status == target:
+        return
+    try:
+        check_move(db, cr.project_id, "change_request", cr.status.value, target.value, record_id=cr.id)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+
 
 router = APIRouter(tags=["change-requests-workflow"])
 
@@ -111,6 +132,7 @@ def submit_change_request(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the creator may submit this change request.")
     if cr.status != ChangeRequestStatus.DRAFT:
         raise HTTPException(status.HTTP_409_CONFLICT, "Only draft change requests can be submitted.")
+    _check_move(db, cr, ChangeRequestStatus.SUBMITTED)
     cr.status = ChangeRequestStatus.SUBMITTED
     cr.submitted_at = datetime.now(UTC)
     log_event(db, entity_type="change_request", entity_id=cr.id, action="submitted",
@@ -156,6 +178,7 @@ def withdraw_change_request(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the creator may withdraw this change request.")
     if cr.status in (ChangeRequestStatus.APPROVED, ChangeRequestStatus.REJECTED):
         raise HTTPException(status.HTTP_409_CONFLICT, "This change request has already been decided.")
+    _check_move(db, cr, ChangeRequestStatus.WITHDRAWN)
     cr.status = ChangeRequestStatus.WITHDRAWN
     decline_all(_latest_version(db, cr))
     log_event(db, entity_type="change_request", entity_id=cr.id, action="withdrawn",
@@ -238,6 +261,7 @@ def decide_change_request(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Change request not found.")
     if cr.status not in (ChangeRequestStatus.SUBMITTED, ChangeRequestStatus.IN_REVIEW):
         raise HTTPException(status.HTTP_409_CONFLICT, "Only submitted change requests can be decided.")
+    _check_move(db, cr, ChangeRequestStatus.APPROVED if payload.approve else ChangeRequestStatus.REJECTED)
     if payload.approve:
         approval_separation.enforce_approval(
             db, user=current_user, artefact_type="change_request", record_id=cr.id, creator_id=cr.creator_id,

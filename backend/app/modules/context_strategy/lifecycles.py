@@ -29,7 +29,7 @@ from app.modules.context_strategy.labels import (
     OPEN_QUESTION_STATUS_LABEL,
     PAIN_POINT_STATUS_LABEL,
 )
-from app.modules.context_strategy.models import FutureState, GuidingPrinciple, Strategy
+from app.modules.context_strategy.models import FutureState, GuidingPrinciple, PainPoint, Strategy
 from app.modules.registry import LifecycleDefinition
 from app.services.lifecycles import table_from_enum
 
@@ -88,12 +88,12 @@ def _guiding_principle_guard(db: Session, user: User, project: Project, record_i
 
 
 def _pain_point_guard(db: Session, user: User, project: Project, record_id: uuid.UUID, state: str) -> None:
-    """Refuses (403) when `user` may not decide Pain Points: every move after submission needs the decide tier."""
+    """Refuses (403) when `user` may not decide Pain Points: every move after submission needs the decide tier, and accepting
+    also admits a role the project's approval policy names."""
     from app.modules.context_strategy import project_router as routes
 
-    routes.require_pain_point_decide_permission(
-        db, user, organization_id=project.organization_id, project_id=project.id,
-    )
+    gate = routes.require_pain_point_acceptor if state == "accepted" else routes.require_pain_point_decide_permission
+    gate(db, user, organization_id=project.organization_id, project_id=project.id)
 
 
 def _open_question_guard(db: Session, user: User, project: Project, record_id: uuid.UUID, state: str) -> None:
@@ -133,7 +133,7 @@ LIFECYCLES: dict[str, LifecycleDefinition] = {
     s.PAIN_POINT_ARTEFACT_TYPE: LifecycleDefinition(
         label="Pain Point", path=("submitted", "triaged", "accepted", "addressed", "closed"),
         transitions=table_from_enum(s._PP_ALLOWED_TRANSITIONS), labels=PAIN_POINT_STATUS_LABEL,
-        optional=("triaged",), entry_guard=_pain_point_guard,
+        optional=("triaged",), gated=("accepted",), entry_guard=_pain_point_guard, record_model=PainPoint,
     ),
     s.OPEN_QUESTION_ARTEFACT_TYPE: LifecycleDefinition(
         label="Open Question", path=("open", "investigating", "ready_for_decision", "resolved"),

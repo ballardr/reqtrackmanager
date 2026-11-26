@@ -25,7 +25,7 @@ from alembic import command
 from app.database import SessionLocal, engine
 from app.models.audit import AuditEvent
 from app.modules.compliance.models import ComplianceReview, ComplianceStandard
-from app.modules.compliance.scheduler import send_required_action_due_notifications, send_review_due_notifications
+from app.modules.compliance.scheduler import send_required_action_due_notifications
 from app.modules.compliance.tests.test_compliance_evidence_api import _setup_project_with_assessment
 from app.modules.compliance.tests.test_compliance_mapping_and_version_impact import (
     _create_mapping,
@@ -39,6 +39,7 @@ from app.modules.compliance.tests.test_compliance_standard_export_import import 
 )
 from app.modules.compliance.tests.test_compliance_standards_api import _base, _create_standard
 from app.modules.compliance.tests.test_project_compliance_api import _project_base, _setup_published_standard_with_tree
+from app.services.review_engine import send_review_reminders as send_review_due_notifications
 from tests.conftest import (
     auth_headers,
     build_alembic_config,
