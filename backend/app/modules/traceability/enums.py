@@ -2,7 +2,8 @@
 Module: modules.traceability.enums
 
 Closed vocabularies of the module: how a governance profile binds a project, which projects it reaches, what it does for
-one project, how a profile's stage workflow binds a project, how firmly a traceability rule is expected to hold and how a project's
+one project, how a profile's stage workflow binds a project, how firmly a traceability rule is expected to hold, which approvals
+baseline checks run before, a record's traceability state and where a Required rule is enforced, and how a project's
 governance health is kept.
 
 Responsibilities:
@@ -82,6 +83,67 @@ class RuleLevel(str, Enum):
     INFORMATIONAL = "informational"
     WARNING = "warning"
     REQUIRED = "required"
+
+
+class ApprovalCheckMode(str, Enum):
+    """Which approvals a baseline policy's checks run before, beside the baselines it names.
+
+    `MANUAL` is a person approving one record; `AUTOMATED` is the product approving a stage because its review deadline
+    passed.
+    """
+
+    OFF = "off"
+    MANUAL = "manual"
+    AUTOMATED = "automated"
+    MANUAL_AND_AUTOMATED = "manual_and_automated"
+
+    @property
+    def manual(self) -> bool:
+        """Whether a person's approval of a record is checked."""
+        return self in (ApprovalCheckMode.MANUAL, ApprovalCheckMode.MANUAL_AND_AUTOMATED)
+
+    @property
+    def automated(self) -> bool:
+        """Whether the review deadline's approval of a stage is checked."""
+        return self in (ApprovalCheckMode.AUTOMATED, ApprovalCheckMode.MANUAL_AND_AUTOMATED)
+
+
+class TraceabilityState(str, Enum):
+    """Whether a record meets a rule or one of a rule's requirements.
+
+    `INHERITED` is met only by counting links carried over from another record, which no person has confirmed.
+    """
+
+    MET = "met"
+    INHERITED = "inherited"
+    UNMET = "unmet"
+
+
+class RecordTraceabilityStatus(str, Enum):
+    """A record's standing against every rule that applies to it."""
+
+    COMPLETE = "complete"
+    INHERITED = "inherited"
+    INCOMPLETE = "incomplete"
+    NOT_APPLICABLE = "not_applicable"
+
+
+class EnforcementPoint(str, Enum):
+    """Where an unmet Required rule refuses something."""
+
+    STAGE_BASELINE = "stage_baseline"
+    MANUAL_BASELINE = "manual_baseline"
+    MANUAL_APPROVAL = "manual_approval"
+    AUTOMATED_APPROVAL = "automated_approval"
+
+
+class NotEnforcedReason(str, Enum):
+    """Why a Required rule refuses nothing in a project."""
+
+    BASELINE_POLICIES_OFF = "baseline_policies_off"
+    CHECK_NOT_ENABLED = "check_not_enabled"
+    TYPE_NOT_COVERED = "type_not_covered"
+    RULE_NOT_ACTIVE = "rule_not_active"
 
 
 #: The refresh cadences a project may choose for interval snapshots, in hours: hourly, a few times a day, then whole days

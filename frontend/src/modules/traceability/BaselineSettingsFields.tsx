@@ -1,7 +1,7 @@
 /**
  * Module: modules/traceability/BaselineSettingsFields
  *
- * The field group that edits a baseline policy: which baselines the checks run before, whether project managers are
+ * The field group that edits a baseline policy: which baselines and approvals the checks run before, whether project managers are
  * told of a refusal, which checks are enabled and, while the Required fields check is enabled, which fields a record
  * must have filled. A profile's tab and a project's section both edit through it, so a change reaches both.
  *
@@ -9,12 +9,12 @@
  * - Hold no state besides the open dialog: the caller owns the settings and receives each change.
  * - Add a required field through a dialog (a record type, then one of its fields) and remove one from the list; a field
  *   the offered options no longer contain still shows under its key and can be removed.
- * - Show why the settings cannot be saved (no baseline kind chosen).
+ * - Show why the settings cannot be saved (no baseline kind and no approval chosen).
  *
  * Design decisions: no empty pickers sit under the list; the add control opens on request. `fieldsSlot` lets a profile
  * place the control that chooses the project whose fields are offered.
  *
- * Dependencies: `FormFields`, `LabeledSelect`, `ItemRowList`, `ActionMenu`, `GOVERNANCE_HELP`.
+ * Dependencies: `FormFields`, `LabeledSelect`, `ItemRowList`, `ActionMenu`, `GOVERNANCE_HELP`, `labelOptions`.
  */
 import { useState, type ReactNode } from "react";
 
@@ -26,9 +26,13 @@ import { InlineMessage } from "../../components/InlineMessage";
 import { ItemRowList } from "../../components/ItemRowList";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
+import { labelOptions } from "../../utils/labelOptions";
 import { GOVERNANCE_HELP } from "./help";
 import { baselineProblem, usesRequiredFields } from "./policyText";
-import type { BaselineCheckOption, BaselineFieldOption, BaselineSettings, BaselineType, RequiredField } from "./types";
+import {
+  APPROVAL_CHECK_LABEL, type ApprovalCheckMode, type BaselineCheckOption, type BaselineFieldOption, type BaselineSettings,
+  type BaselineType, type RequiredField,
+} from "./types";
 
 /**
  * @param settings The baseline policy being edited.
@@ -81,6 +85,11 @@ export function BaselineSettingsFields({
             onChange={(on) => onChange({ ...settings, applies_to_manual: on })}
           />
         </div>
+        <LabeledSelect
+          label="Check record approvals" help={GOVERNANCE_HELP.baselineApprovals} placeholder={null} autoWidth
+          value={settings.approval_checks} options={labelOptions(APPROVAL_CHECK_LABEL)}
+          onChange={(value) => onChange({ ...settings, approval_checks: value as ApprovalCheckMode })}
+        />
         <InlineMessage>{problem}</InlineMessage>
       </div>
       <CheckboxField

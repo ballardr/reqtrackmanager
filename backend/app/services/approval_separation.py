@@ -305,10 +305,13 @@ def _clear_mark(db: Session, artefact_type: str, record_id: uuid.UUID) -> None:
 
 def enforce_approval(
     db: Session, *, user: User, artefact_type: str, record_id: uuid.UUID, creator_id: uuid.UUID,
-    organization_id: uuid.UUID, project_id: uuid.UUID | None, comment: str | None,
+    organization_id: uuid.UUID, project_id: uuid.UUID | None, comment: str | None, check_record: bool = True,
 ) -> bool:
-    """Applies the rule at the moment `user` approves a record; call after the approval permission is checked and
+    """Applies the rules of the moment `user` approves a record; call after the approval permission is checked and
     before the record changes. Nothing is committed.
+
+    Every approval path passes here, so the checks the project's baseline policy enables for approvals run here too
+    (`services.baseline.check_record_approval`), once the separation rule has admitted the approver.
 
     Another person approving clears the record's self-approval mark. The creator approving is refused when a separate
     approver is required; otherwise it marks the record (`RecordSelfApproval`) with one `self_approved` audit event and,
@@ -323,14 +326,19 @@ def enforce_approval(
         organization_id: The record's organisation.
         project_id: The record's project, `None` for a record the organisation owns.
         comment: The approver's comment, when the approval takes one.
+        check_record: Whether to run the approval checks now. `False` for a stage baseline, which runs its own checks over
+            everything it approves, and for a path that changes the record as it approves it and runs them afterwards.
 
     Returns:
         Whether this approval was a self-approval.
 
     Raises:
-        HTTPException: 403 when a separate approver is required; 400 when a deliberate self-approval has no comment.
+        HTTPException: 403 when a separate approver is required; 400 when a deliberate self-approval has no comment; 409
+            with `{message, failures[]}` when an approval check fails.
     """
     if user.id != creator_id:
+        if check_record:
+            _run_approval_checks(db, user, artefact_type, record_id, project_id)
         _clear_mark(db, artefact_type, record_id)
         return False
     resolved = resolve_separation(db, artefact_type=artefact_type, organization_id=organization_id, project_id=project_id)
@@ -345,6 +353,8 @@ def enforce_approval(
             status.HTTP_400_BAD_REQUEST,
             f"A comment is required to approve a {label} that you created yourself.",
         )
+    if check_record:
+        _run_approval_checks(db, user, artefact_type, record_id, project_id)
     _clear_mark(db, artefact_type, record_id)
     db.add(RecordSelfApproval(
         artefact_type=artefact_type, record_id=record_id, organization_id=organization_id, project_id=project_id,
@@ -356,6 +366,17 @@ def enforce_approval(
         organization_id=organization_id, project_id=project_id, detail={"self_approved": True},
     )
     return True
+
+
+def _run_approval_checks(db: Session, user: User, artefact_type: str, record_id: uuid.UUID, project_id: uuid.UUID | None) -> None:
+    """The project's approval checks over one record. A record the organisation owns belongs to no project's policy."""
+    project = None if project_id is None else db.get(Project, project_id)
+    if project is None:
+        return
+    # Imported here: `services.baseline` imports this module for the separation rule of the drafts it approves.
+    from app.services.baseline import check_record_approval
+
+    check_record_approval(db, project, user, artefact_type, record_id)
 
 
 def enforce_record_approval(

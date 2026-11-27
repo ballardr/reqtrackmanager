@@ -3,7 +3,7 @@ Module: modules.traceability.rules_router
 
 API of traceability rules, in two route groups the module's organisation and project routers include: `org_routes` (a
 governance profile's rules) and `project_routes` (a project's rules in effect, its own rules, hiding and restoring a
-profile's rule, the editor's options and presets, a rule's evaluation counts and the derived hierarchy).
+profile's rule, the editor's options and presets, a rule's evaluation counts, records' traceability status and the derived hierarchy).
 
 Design decisions:
 - Every route needs the `traceability_rules` part to be in effect. Changing a profile's rules needs `manage_org_traceability`
@@ -14,6 +14,10 @@ Design decisions:
   refused (409).
 - An evaluation returns counts only and needs the `view` permission on the rule's source type, so a number never reveals
   records the caller cannot open. It evaluates the project's own links.
+- A record's status needs the `view` permission on its type and the record to be one the project holds; the list of a
+  type's statuses gives each record's id and counts, never another record's code or title. Neither changes anything.
+- A Required rule is returned with where it is enforced, or the reason it is not, so no screen reads it as blocking when
+  nothing blocks.
 
 Dependencies: `modules.traceability.rules` (service), `rule_presets`, `services.rbac` (gates).
 """
@@ -23,7 +27,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -34,23 +38,27 @@ from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
 from app.modules import registry
 from app.modules.traceability import rule_fields, rule_presets, rule_tree, rules
+from app.modules.traceability import status as traceability_status
 from app.modules.traceability._shared import (
     MANAGE_ORG_TRACEABILITY,
     MANAGE_PROJECT_TRACEABILITY,
     TRACEABILITY_MODULE_KEY,
     TRACEABILITY_RULES,
 )
-from app.modules.traceability.enums import RuleLevel
+from app.modules.traceability.enums import RuleLevel, TraceabilityState
 from app.modules.traceability.models import GovernanceProfile, GovernanceTraceabilityRule
 from app.modules.traceability.rule_schemas import (
     EffectiveRuleOut,
     HierarchyEdgeOut,
     HierarchyNodeOut,
     HierarchyOut,
+    LeafStatusOut,
     PresetBuildIn,
     PresetBuiltOut,
     PresetOut,
     ProjectRulesOut,
+    RecordStatusOut,
+    RecordStatusSummaryOut,
     RuleCreate,
     RuleEvaluationOut,
     RuleFieldOptionOut,
@@ -59,8 +67,10 @@ from app.modules.traceability.rule_schemas import (
     RuleOptionsOut,
     RuleOut,
     RuleRestoreSet,
+    RuleStatusOut,
     RuleTypeOptionOut,
     RuleUpdate,
+    TypeStatusOut,
 )
 from app.services import record_summaries
 from app.services.lookups import project_or_404
@@ -131,17 +141,17 @@ def _project_rules_out(db: Session, project: Project, user: User) -> ProjectRule
     from_profiles = [e.rule for e in entries if e.source == "profile"]
     if from_profiles:
         problems.update(rules.problems_for_rules(db, from_profiles, project.organization_id, None))
-    return ProjectRulesOut(
-        can_manage=can_manage,
-        rules=[
-            EffectiveRuleOut(
-                **_rule_out(e.rule, problems.get(e.rule.id, [])), source=e.source, source_name=e.source_name,
-                enforced=e.enforced, hidden=e.hidden, can_edit=can_manage and e.source == "project",
-                can_hide=can_manage and e.source == "profile" and not e.enforced,
-            )
-            for e in entries
-        ],
-    )
+    context = traceability_status.enforcement_for(db, project)
+    outs = []
+    for e in entries:
+        enforcement = context.for_rule(e) or traceability_status.Enforcement()
+        outs.append(EffectiveRuleOut(
+            **_rule_out(e.rule, problems.get(e.rule.id, [])), source=e.source, source_name=e.source_name,
+            enforced=e.enforced, hidden=e.hidden, can_edit=can_manage and e.source == "project",
+            can_hide=can_manage and e.source == "profile" and not e.enforced,
+            enforced_at=list(enforcement.points), not_enforced_reason=enforcement.reason,
+        ))
+    return ProjectRulesOut(can_manage=can_manage, rules=outs)
 
 
 # --- options and presets ---------------------------------------------------------------------------
@@ -446,15 +456,100 @@ def get_project_rule_evaluation(
     if registered and not permission_satisfied(held, encode_permission(entry.rule.source_type, "view")):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You may not read records of this type.")
     result = rules.evaluate(db, project, entry.rule)
-    leaves: dict[str, list[int]] = {}
+    leaves: dict[str, dict[TraceabilityState, int]] = {}
     labels: dict[str, str] = {}
     for record in result.in_scope:
         for leaf in record.leaves:
-            leaves.setdefault(leaf.path, [0, 0])[0 if leaf.met else 1] += 1
+            counts = leaves.setdefault(leaf.path, dict.fromkeys(TraceabilityState, 0))
+            counts[leaf.state] += 1
             labels[leaf.path] = leaf.label
     return RuleEvaluationOut(
-        source_total=result.source_total, in_scope=len(result.in_scope), satisfied=result.satisfied_count,
-        unsatisfied=result.unsatisfied_count,
-        leaves=[RuleLeafCountOut(path=p, label=labels[p], met=c[0], unmet=c[1]) for p, c in sorted(leaves.items())],
+        source_total=result.source_total, in_scope=len(result.in_scope), satisfied=result.count(TraceabilityState.MET),
+        inherited=result.count(TraceabilityState.INHERITED), unsatisfied=result.count(TraceabilityState.UNMET),
+        leaves=[
+            RuleLeafCountOut(
+                path=path, label=labels[path], met=c[TraceabilityState.MET], inherited=c[TraceabilityState.INHERITED],
+                unmet=c[TraceabilityState.UNMET],
+            )
+            for path, c in sorted(leaves.items())
+        ],
         problems=list(result.problems),
+    )
+
+
+# --- project: records' traceability status ---------------------------------------------------------
+
+
+def _require_type_view(db: Session, user: User, project: Project, artefact_type: str) -> None:
+    """Raises 404 for a type that is not registered and 403 when the caller may not read its records."""
+    if artefact_type not in registry.get_all_registered_artefact_types() or not record_summaries.has_summaries(artefact_type):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Record type not found.")
+    held = get_effective_permissions(db, user.id, project_id=project.id)
+    if not permission_satisfied(held, encode_permission(artefact_type, "view")):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You may not read records of this type.")
+
+
+@project_routes.get("/status/{artefact_type}", response_model=TypeStatusOut, dependencies=[Depends(_project_part)])
+def get_type_traceability_status(
+    project_id: UUID, artefact_type: str, record_id: list[UUID] | None = Query(None, max_length=500),
+    current_user: User = Depends(_project_view), db: Session = Depends(get_db),
+) -> TypeStatusOut:
+    """The traceability status of the project's records of one type, or of the records named by `record_id`.
+
+    Raises:
+        HTTPException: 404 for a type that is not registered; 403 when the caller may not read records of it.
+    """
+    project = project_or_404(db, project_id)
+    _require_type_view(db, current_user, project, artefact_type)
+    found = traceability_status.record_statuses(db, project, artefact_type, record_id)
+    return TypeStatusOut(
+        artefact_type=artefact_type,
+        records=[
+            RecordStatusSummaryOut(
+                record_id=r.record_id, status=r.status, highest_level=r.highest_level, applicable=len(r.rules),
+                unmet=sum(1 for x in r.rules if x.state == TraceabilityState.UNMET),
+                inherited=sum(1 for x in r.rules if x.state == TraceabilityState.INHERITED),
+            )
+            for _, r in sorted(found.records.items(), key=lambda item: str(item[0]))
+        ],
+        unevaluated_rules=list(found.unevaluated),
+    )
+
+
+@project_routes.get("/status/{artefact_type}/{record_id}", response_model=RecordStatusOut, dependencies=[Depends(_project_part)])
+def get_record_traceability_status(
+    project_id: UUID, artefact_type: str, record_id: UUID,
+    current_user: User = Depends(_project_view), db: Session = Depends(get_db),
+) -> RecordStatusOut:
+    """Every rule that applies to one record, whether it meets each requirement, and where Required rules are enforced.
+
+    Raises:
+        HTTPException: 404 for a type or record the project does not hold (an archived record has no status); 403 when
+            the caller may not read records of the type.
+    """
+    project = project_or_404(db, project_id)
+    _require_type_view(db, current_user, project, artefact_type)
+    found = traceability_status.record_statuses(db, project, artefact_type, [record_id])
+    record = found.records.get(record_id)
+    if record is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Record not found.")
+    context = traceability_status.enforcement_for(db, project)
+    outs = []
+    for rule in record.rules:
+        enforcement = context.for_rule(rule.entry) or traceability_status.Enforcement()
+        outs.append(RuleStatusOut(
+            rule_id=rule.entry.rule.id, name=rule.entry.rule.name, level=rule.level, source=rule.entry.source,
+            source_name=rule.entry.source_name, state=rule.state, enforced_at=list(enforcement.points),
+            not_enforced_reason=enforcement.reason,
+            leaves=[
+                LeafStatusOut(
+                    path=leaf.path, label=leaf.label, count=leaf.count, confirmed=leaf.confirmed, minimum=leaf.minimum,
+                    maximum=leaf.maximum, state=leaf.state,
+                )
+                for leaf in rule.leaves
+            ],
+        ))
+    return RecordStatusOut(
+        record_id=record_id, status=record.status, highest_level=record.highest_level, rules=outs,
+        unevaluated_rules=list(found.unevaluated),
     )

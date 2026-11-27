@@ -38,6 +38,7 @@ from app.schemas.change_request import ChangeRequestDecision, ChangeRequestOut, 
 from app.services import approval_policy, approval_separation, notifications, pubsub
 from app.services.actions import generate_unique_code as generate_action_unique_code
 from app.services.audit import log_event
+from app.services.baseline import check_record_approval
 from app.services.change_request_links import build_preview, decline_all, resolve_links
 from app.services.codes import qualify
 from app.services.lifecycles import check_move
@@ -507,6 +508,10 @@ def decide_change_request(
                 db, project_or_404(db, project_id), cr, version, approver_id=current_user.id,
                 merge_ids=set(payload.merge_link_ids) if payload.merge_link_ids is not None else None,
             )
+        # Approving the request approves the requirement as it now stands, so the approval checks judge the result,
+        # the proposed links included.
+        if cr.requirement_id is not None:
+            check_record_approval(db, project_or_404(db, project_id), current_user, "requirement", cr.requirement_id)
         change_requests_approved_total.inc()
     else:
         cr.status = ChangeRequestStatus.REJECTED

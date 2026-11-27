@@ -3,7 +3,8 @@
  *
  * The one Links panel every artefact detail page shows in `DetailLayout`'s aside: the record's direct links grouped
  * by the type at the other end, each phrased by its link type, with where it lives, its status and whether it is
- * archived; an "Add link" dialog and a remove action for those who may change links. Link kinds come from the
+ * archived; an "Add link" dialog and a remove action for those who may change links, and a "Confirm link" action on
+ * a carried-over link (one with a note). Link kinds come from the
  * server (`link-types`, restriction- and rule-filtered), so a new type needs no change here; dedicated actions
  * (Supersede) come from the page through `actions`.
  *
@@ -18,7 +19,7 @@
  *   collapsed). Relationship labels are off by default; "View options" toggles them, remembered per viewer.
  * - `api` is injectable so stories and tests need no network.
  */
-import { ChevronDown, ChevronRight, FilePlus, GitBranch, Link2, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, FilePlus, GitBranch, Link2, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { artefactLinksApi, type ArtefactLinksApi, type LinkGraph, type LinkGraphEdge, type LinkGraphNode } from "../api/artefactLinks";
@@ -183,6 +184,18 @@ export function ArtefactLinksPanel({
     onChanged?.();
   }
 
+  // Confirming changes no link, so it needs the direct right to link even where changes go through a change request.
+  async function confirmLink(row: LinkRow) {
+    if (!projectId) return;
+    try {
+      await api.confirm(projectId, artefactType, artefactId, row.edge.id);
+      showToast(strings.artefactLinks.confirmed);
+      changed();
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.artefactLinks.confirmFailed), "error");
+    }
+  }
+
   async function removeLink(row: LinkRow) {
     if (!projectId) return;
     const reason = removeReason.trim();
@@ -341,6 +354,7 @@ export function ArtefactLinksPanel({
                             setRemoveReason("");
                             setRemoving(row);
                           }}
+                          onConfirm={graph.can_link && row.edge.note ? () => void confirmLink(row) : undefined}
                         />
                       ))}
                     </ul>
@@ -417,38 +431,62 @@ export function ArtefactLinksPanel({
   );
 }
 
-/** One link: phrase, record (linked to its page), status, project, flags, and remove. */
+/**
+ * One link: phrase, record (linked to its page), status, project, flags and the row's actions: remove, and for a
+ * carried-over link `onConfirm`. Two actions share one menu.
+ */
 function LinkRowView({
   row,
   currentProjectId,
   canRemove,
   onRemove,
+  onConfirm,
 }: {
   row: LinkRow;
   currentProjectId: string;
   canRemove: boolean;
   onRemove: () => void;
+  /** Given only for a carried-over link the viewer may confirm. */
+  onConfirm?: () => void;
 }) {
   const strings = useStrings();
   const { edge, node } = row;
   const phrase = edge.phrase ?? strings.artefactLinks.untyped;
-  return (
-    <ItemRow
-      as="li"
-      className="artefact-links__row"
-      title={phrase}
-      actions={canRemove && (
-        <button
-          className="btn btn-danger btn-sm btn-icon"
-          title={strings.artefactLinks.removeAction}
-          aria-label={strings.artefactLinks.removeLabel(phrase, node.label)}
-          onClick={onRemove}
-        >
-          <Trash2 />
+  const confirmLabel = strings.artefactLinks.confirmLabel(phrase, node.label);
+  let actions: ReactNode = null;
+  if (canRemove && onConfirm) {
+    actions = (
+      <ActionMenu
+        triggerLabel={strings.artefactLinks.rowActionsLabel(phrase, node.label)} size="sm"
+        items={[
+          { label: strings.artefactLinks.confirmAction, icon: <Check aria-hidden="true" />, onSelect: onConfirm },
+          { label: strings.artefactLinks.removeAction, icon: <Trash2 aria-hidden="true" />, danger: true, onSelect: onRemove },
+        ]}
+      />
+    );
+  } else if (canRemove) {
+    actions = (
+      <button
+        className="btn btn-danger btn-sm btn-icon"
+        title={strings.artefactLinks.removeAction}
+        aria-label={strings.artefactLinks.removeLabel(phrase, node.label)}
+        onClick={onRemove}
+      >
+        <Trash2 />
+      </button>
+    );
+  } else if (onConfirm) {
+    actions = (
+      <Tooltip label={confirmLabel}>
+        <button className="btn btn-sm btn-icon" aria-label={confirmLabel} onClick={onConfirm}>
+          <Check aria-hidden="true" />
         </button>
-      )}
-    >
-      {/* The record's own metadata (status, project, warning) may wrap below its title; the Remove action may not. */}
+      </Tooltip>
+    );
+  }
+  return (
+    <ItemRow as="li" className="artefact-links__row" title={phrase} actions={actions}>
+      {/* The record's own metadata (status, project, warning) may wrap below its title; the row's actions may not. */}
       <div className="artefact-links__summary" data-wrap-ok>
         <LinkedRecordSummary edge={edge} node={node} currentProjectId={currentProjectId} layout="list" />
       </div>

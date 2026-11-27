@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any, Literal
 
@@ -463,16 +463,18 @@ def problems_for_rules(
     return found
 
 
-def evaluate(db: Session, project: Project, rule: GovernanceTraceabilityRule) -> rule_evaluation.RuleEvaluation:
-    """Evaluates one rule for the project's records (`rule_evaluation.evaluate_rule`); a stored rule that no longer parses is
-    reported as a problem."""
+def evaluate(
+    db: Session, project: Project, rule: GovernanceTraceabilityRule, *, record_ids: Collection[uuid.UUID] | None = None,
+) -> rule_evaluation.RuleEvaluation:
+    """Evaluates one rule for the project's records, or only `record_ids` (`rule_evaluation.evaluate_rule`); a stored rule
+    that no longer parses is reported as a problem."""
     trees = parsed(rule)
     if trees is None:
         return rule_evaluation.RuleEvaluation(source_total=0, problems=("The rule's definition can no longer be read.",))
     scope, requirement = trees
     return rule_evaluation.evaluate_rule(
         db, project.id, source_type=rule.source_type, source_subtype=rule.source_subtype, applies_when=scope,
-        requires=requirement,
+        requires=requirement, record_ids=record_ids,
     )
 
 

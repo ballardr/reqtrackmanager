@@ -10,7 +10,7 @@ import io
 import json
 import uuid
 import zipfile
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select
 
@@ -33,7 +33,8 @@ from tests.conftest import (
 
 ORG = "/api/v1/orgs/{org}/modules/traceability"
 PROJECT = "/api/v1/projects/{project}/modules/traceability"
-TODAY = date.today()
+# The server's day for a request that names none, so the tests do not depend on the host's timezone.
+TODAY = datetime.now(UTC).date()
 
 
 def _profile_url(org_id, profile_id, suffix="") -> str:

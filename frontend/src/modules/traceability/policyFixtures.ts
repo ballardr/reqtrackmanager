@@ -78,10 +78,11 @@ export const FIELD_OPTIONS: Record<string, BaselineFieldOption[]> = {
 };
 
 export const EMPTY_BASELINE: BaselineSettings = {
-  applies_to_stage: true, applies_to_manual: false, notify_managers: true, checks: [], required_fields: [],
+  applies_to_stage: true, applies_to_manual: false, approval_checks: "off", notify_managers: true, checks: [],
+  required_fields: [],
 };
 export const FILLED_BASELINE: BaselineSettings = {
-  applies_to_stage: true, applies_to_manual: true, notify_managers: true,
+  applies_to_stage: true, applies_to_manual: true, approval_checks: "off", notify_managers: true,
   checks: ["traceability:required_fields"], required_fields: [{ artefact_type: "requirement", field_key: "reasoning" }],
 };
 
@@ -93,12 +94,12 @@ export function buildProjectBaseline(canManage = true, own: BaselineSettings | n
   return {
     can_manage: canManage, own, inherited_from: own ? null : "Programme Atlas",
     checks: [
-      { key: "traceability:required_fields", name: "Required fields", available: true, stage: true, manual: true, sources: ["Assurance profile", "project"] },
-      { key: "compliance:evidence", name: null, available: false, stage: true, manual: false, sources: ["parent_project"] },
+      { key: "traceability:required_fields", name: "Required fields", available: true, stage: true, manual: true, manual_approval: false, automated_approval: false, sources: ["Assurance profile", "project"] },
+      { key: "compliance:evidence", name: null, available: false, stage: true, manual: false, manual_approval: false, automated_approval: false, sources: ["parent_project"] },
     ],
     required_fields: [
-      { artefact_type: "requirement", field_key: "reasoning", field_label: "Reasoning", stage: true, manual: true, sources: ["project"] },
-      { artefact_type: "risk", field_key: "custom_gone", field_label: null, stage: true, manual: false, sources: ["Assurance profile"] },
+      { artefact_type: "requirement", field_key: "reasoning", field_label: "Reasoning", stage: true, manual: true, manual_approval: false, automated_approval: false, sources: ["project"] },
+      { artefact_type: "risk", field_key: "custom_gone", field_label: null, stage: true, manual: false, manual_approval: false, automated_approval: false, sources: ["Assurance profile"] },
     ],
     notify_managers: true, check_options: BASELINE_CHECKS, types: BASELINE_TYPES, field_options: FIELD_OPTIONS,
   };

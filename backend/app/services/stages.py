@@ -102,7 +102,7 @@ def auto_approve_overdue_stage_reviews(db: Session) -> None:
             with db.begin_nested():
                 move_stage(
                     db, project, stage, target, actor, actor_roles={ProjectRole.PROJECT_MANAGER},
-                    reason="review_deadline_passed_no_rejection",
+                    reason="review_deadline_passed_no_rejection", automated=True,
                 )
         except BaselineRefused as refused:
             if _managers_are_notified(db, project):

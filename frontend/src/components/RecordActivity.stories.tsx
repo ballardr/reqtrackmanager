@@ -47,6 +47,10 @@ export const DescribesLinksByTheRecordAtTheOtherEnd: Story = {
         entity_type: "artefact_link", action: "deleted",
         detail: { other_label: "REQ-004 Export", other_type_label: "Requirement", direction: "incoming" },
       }),
+      buildActivityEntry({
+        entity_type: "artefact_link", action: "link_confirmed",
+        detail: { other_label: "REQ-009 Import", other_type_label: "Requirement", direction: "outgoing" },
+      }),
     ]),
   },
   play: async ({ canvasElement }) => {
@@ -55,7 +59,8 @@ export const DescribesLinksByTheRecordAtTheOtherEnd: Story = {
       expect(canvas.getByText("Alex Morgan added a link to DEC-001 Use Postgres (Decision)")).toBeInTheDocument(),
     );
     await expect(canvas.getByText("Alex Morgan removed a link from REQ-004 Export (Requirement)")).toBeInTheDocument();
-    await expect(canvas.getAllByText("Link")).toHaveLength(2);
+    await expect(canvas.getByText("Alex Morgan confirmed a carried-over link with REQ-009 Import (Requirement)")).toBeInTheDocument();
+    await expect(canvas.getAllByText("Link")).toHaveLength(3);
   },
 };
 

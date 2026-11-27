@@ -1766,9 +1766,10 @@ def seed_governance_profiles(headers: dict, org_id: str, exempt_project_id: str,
     profile requires the Reviewed step of a requirement, lets Stakeholders decide change requests, sends a requirement's
     review reminder 14 days ahead with a 90-day review interval and refuses a stage baseline that holds a requirement
     with no description or one the person taking the baseline may not approve; the Opt-in profile forbids skipping steps
-    and makes new stages start in a safety-critical workflow. The Enforced profile expects every Project Requirement to
-    link to a Stakeholder Requirement (a warning) and the Default profile every Stakeholder Requirement to link to a
-    Business Requirement (informational).
+    and makes new stages start in a safety-critical workflow. Its Required rule expects every requirement to have a
+    verifying action, refused at approval and at a stage baseline only in a project that chooses the profile. The Enforced
+    profile expects every Project Requirement to link to a Stakeholder Requirement (a warning) and the Default profile every
+    Stakeholder Requirement to link to a Business Requirement (informational).
     The organisation keeps governance health as a snapshot refreshed every 12 hours, and the offered project keeps its own
     as a snapshot recomputed after a change."""
     enable_module(headers, org_id, "traceability")
@@ -1847,6 +1848,27 @@ def seed_governance_profiles(headers: dict, org_id: str, exempt_project_id: str,
     safety.raise_for_status()
     httpx.put(
         f"{base}/{safety.json()['id']}/lifecycle/skip", json={"forbidden": True}, headers=headers, timeout=30,
+    ).raise_for_status()
+    httpx.post(
+        f"{base}/{safety.json()['id']}/rules",
+        json={
+            "name": "Safety requirements are verified",
+            "description": "Every requirement of the safety case has a requirement action that verifies it.",
+            "source_type": "requirement", "level": "required",
+            "requires": {
+                "op": "link", "direction": "incoming", "min": 1, "link_types": {"mode": "untyped"},
+                "targets": [{"artefact_type": "requirement_action"}],
+            },
+        },
+        headers=headers, timeout=30,
+    ).raise_for_status()
+    httpx.put(
+        f"{base}/{safety.json()['id']}/baseline",
+        json={
+            "applies_to_stage": True, "applies_to_manual": False, "approval_checks": "manual", "notify_managers": True,
+            "checks": ["traceability:traceability_rules"], "required_fields": [],
+        },
+        headers=headers, timeout=30,
     ).raise_for_status()
     safety_workflow = create_org_workflow(
         headers, org_id, "Safety-critical delivery",

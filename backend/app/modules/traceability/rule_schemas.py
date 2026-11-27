@@ -3,7 +3,7 @@ Module: modules.traceability.rule_schemas
 
 Request and response models of the traceability rule API: the rule tree as it crosses the wire, a rule with the facts the
 screens need (its problems, where it came from, whether the project may change or hide it), the editor's options, the
-preset builder, a rule's evaluation counts and the derived hierarchy.
+preset builder, a rule's evaluation counts, records' traceability status and the derived hierarchy.
 """
 
 from __future__ import annotations
@@ -14,7 +14,13 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.modules.traceability.enums import RuleLevel
+from app.modules.traceability.enums import (
+    EnforcementPoint,
+    NotEnforcedReason,
+    RecordTraceabilityStatus,
+    RuleLevel,
+    TraceabilityState,
+)
 from app.modules.traceability.models import RULE_DESCRIPTION_MAX_LENGTH, RULE_NAME_MAX_LENGTH
 
 
@@ -112,6 +118,8 @@ class EffectiveRuleOut(RuleOut):
         hidden: The project has hidden it.
         can_edit: The project owns it and the caller may change it.
         can_hide: An optional profile gave it and the caller may hide it.
+        enforced_at: For a Required rule, the baselines and approvals that refuse a record that does not meet it.
+        not_enforced_reason: For a Required rule that refuses nothing, why; null otherwise.
     """
 
     source: Literal["profile", "project", "parent_project"]
@@ -120,6 +128,8 @@ class EffectiveRuleOut(RuleOut):
     hidden: bool
     can_edit: bool
     can_hide: bool
+    enforced_at: list[EnforcementPoint]
+    not_enforced_reason: NotEnforcedReason | None
 
 
 class ProjectRulesOut(BaseModel):
@@ -203,11 +213,12 @@ class PresetBuiltOut(BaseModel):
 
 
 class RuleLeafCountOut(BaseModel):
-    """How many in-scope records meet one link leaf, and how many do not."""
+    """How many in-scope records meet one link leaf, meet it only through carried-over links, and do not meet it."""
 
     path: str
     label: str
     met: int
+    inherited: int
     unmet: int
 
 
@@ -218,6 +229,7 @@ class RuleEvaluationOut(BaseModel):
         source_total: Records of the source type (and sub-type) the project holds.
         in_scope: Records the rule applies to.
         satisfied: In-scope records that meet the rule.
+        inherited: In-scope records that meet it only by counting links carried over from another record.
         unsatisfied: In-scope records that do not.
         leaves: Per requirement leaf, the in-scope records meeting it.
         problems: Why the rule could not be evaluated.
@@ -226,9 +238,82 @@ class RuleEvaluationOut(BaseModel):
     source_total: int
     in_scope: int
     satisfied: int
+    inherited: int
     unsatisfied: int
     leaves: list[RuleLeafCountOut]
     problems: list[str]
+
+
+class LeafStatusOut(BaseModel):
+    """How a record fares against one requirement of a rule.
+
+    Attributes:
+        count: Distinct records found at the other end of the links.
+        confirmed: Those reached by a link a person authored or confirmed.
+        state: `met`, `inherited` (met only counting carried-over links) or `unmet`.
+    """
+
+    path: str
+    label: str
+    count: int
+    confirmed: int
+    minimum: int
+    maximum: int | None
+    state: TraceabilityState
+
+
+class RuleStatusOut(BaseModel):
+    """One rule that applies to a record.
+
+    Attributes:
+        enforced_at: For a Required rule, where a record that does not meet it is refused.
+        not_enforced_reason: For a Required rule that refuses nothing, why; null otherwise.
+    """
+
+    rule_id: UUID
+    name: str
+    level: RuleLevel
+    source: Literal["profile", "project", "parent_project"]
+    source_name: str | None
+    state: TraceabilityState
+    enforced_at: list[EnforcementPoint]
+    not_enforced_reason: NotEnforcedReason | None
+    leaves: list[LeafStatusOut]
+
+
+class RecordStatusOut(BaseModel):
+    """A record's traceability status with every rule that applies to it.
+
+    Attributes:
+        status: `complete`, `inherited`, `incomplete` or `not_applicable` (no rule applies).
+        highest_level: The highest level among the rules not met; null when every one is met.
+        unevaluated_rules: Names of rules for the record's type that cannot be evaluated.
+    """
+
+    record_id: UUID
+    status: RecordTraceabilityStatus
+    highest_level: RuleLevel | None
+    rules: list[RuleStatusOut]
+    unevaluated_rules: list[str]
+
+
+class RecordStatusSummaryOut(BaseModel):
+    """One record's standing in a list: its status, the highest level it fails and how many rules it does not meet."""
+
+    record_id: UUID
+    status: RecordTraceabilityStatus
+    highest_level: RuleLevel | None
+    applicable: int
+    unmet: int
+    inherited: int
+
+
+class TypeStatusOut(BaseModel):
+    """The traceability status of a project's records of one type."""
+
+    artefact_type: str
+    records: list[RecordStatusSummaryOut]
+    unevaluated_rules: list[str]
 
 
 class HierarchyNodeOut(BaseModel):

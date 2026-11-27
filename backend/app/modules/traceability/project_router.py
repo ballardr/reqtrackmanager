@@ -261,7 +261,8 @@ def _baseline_response(db: Session, project: Project, user: User) -> ProjectBase
         own=None if policy.own is None else baseline_settings_out(policy.own), inherited_from=policy.inherited_from,
         checks=[
             EffectiveBaselineCheckOut(
-                key=c.key, name=c.name, available=c.available, stage=c.stage, manual=c.manual, sources=list(c.sources),
+                key=c.key, name=c.name, available=c.available, stage=c.stage, manual=c.manual,
+                manual_approval=c.manual_approval, automated_approval=c.automated_approval, sources=list(c.sources),
             )
             for c in policy.checks
         ],
@@ -269,7 +270,7 @@ def _baseline_response(db: Session, project: Project, user: User) -> ProjectBase
             EffectiveBaselineFieldOut(
                 artefact_type=f.field.artefact_type, field_key=f.field.field_key,
                 field_label=labels.get((f.field.artefact_type, f.field.field_key)), stage=f.stage, manual=f.manual,
-                sources=list(f.sources),
+                manual_approval=f.manual_approval, automated_approval=f.automated_approval, sources=list(f.sources),
             )
             for f in policy.required_fields
         ],
@@ -300,7 +301,7 @@ def set_project_baseline_policy(
         settings=None if given is None else baseline_policy.BaselineSettings(
             given.applies_to_stage, given.applies_to_manual, tuple(given.checks),
             tuple(baseline_policy.RequiredField(f.artefact_type, f.field_key) for f in given.required_fields),
-            given.notify_managers,
+            given.notify_managers, given.approval_checks,
         ),
     )
     db.commit()

@@ -48,7 +48,7 @@ A permanent snapshot of every requirement that was in draft or reviewed status a
 
 #### Baseline check
 
-A test that must pass before a baseline is taken, chosen by a project's baseline policy. A failing check refuses the whole baseline and lists every failure. See [Baseline policies](../modules/governance-module/baseline-policies.md).
+A test that must pass before a baseline is taken and, if the project's baseline policy chooses, before a record is approved. A failing check refuses the whole baseline or the approval and lists what failed. See [Baseline policies](../modules/governance-module/baseline-policies.md).
 
 #### Boundary box
 
@@ -61,6 +61,10 @@ A dashed line on a block diagram that stands in for an element hidden by a [view
 #### Change log
 
 The formal, versioned history of a requirement or change request: who changed what, and when, as part of the governed content itself — distinct from its discussion thread. See [Discussions, notifications, and audit](../concepts/discussions-notifications-and-audit.md).
+
+#### Carried-over link
+
+A link copied from another record, shown with a note saying where it came from until a person confirms it. See [Links and traceability](../core-features/links-and-traceability.md#carried-over-links).
 
 #### Change request
 

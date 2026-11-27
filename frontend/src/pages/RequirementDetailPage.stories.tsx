@@ -524,6 +524,23 @@ export const AddLink: Story = {
 };
 
 /** Removing a link opens the shared `ConfirmDialog` (Tier 1) instead of firing `DELETE` immediately. */
+export const ConfirmsACarriedOverActionLink: Story = {
+  beforeEach: () => {
+    const carried = { ...buildRequirementAction({ title: "Bench test the bus" }), link_id: "link-9", link_note: "Copied from REQ-001" };
+    mockRequirementDetailApis(["project_manager"], {}, { linkedActions: [carried] });
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Copied from REQ-001")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Actions for Bench test the bus" }));
+    await userEvent.click(await within(document.body).findByRole("menuitem", { name: "Confirm link" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/artefacts/requirement/${REQUIREMENT_ID}/links/link-9/confirm`,
+    ));
+  },
+};
+
 export const RemoveLinkConfirms: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["stakeholder"], {}, {

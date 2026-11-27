@@ -202,6 +202,29 @@ export const ShowsWhereACarriedOverLinkWasCopiedFrom: Story = {
   },
 };
 
+export const ConfirmsACarriedOverLinkFromTheRowMenu: Story = {
+  args: { api: buildLinksApi({ graph: fn(async () => buildGraph([[DECISION, { note: "Copied from SW-PERF-001" }]])) }) },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: /Actions for link:/ }));
+    await userEvent.click(await within(document.body).findByRole("menuitem", { name: "Confirm link" }));
+    await waitFor(() => expect(args.api!.confirm).toHaveBeenCalledWith(LINKS_PROJECT_ID, "requirement", LINKS_ARTEFACT_ID, expect.any(String)));
+    await expect(args.api!.remove).not.toHaveBeenCalled();
+  },
+};
+
+export const ConfirmsACarriedOverLinkThatCannotBeRemovedHere: Story = {
+  args: {
+    api: buildLinksApi({ graph: fn(async () => buildGraph([[DECISION, { note: "Copied from SW-PERF-001", dedicated: true }]])) }),
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: /^Confirm link:/ }));
+    await waitFor(() => expect(args.api!.confirm).toHaveBeenCalled());
+    await expect(canvas.queryByRole("button", { name: /^Remove link:/ })).not.toBeInTheDocument();
+  },
+};
+
 export const FlagsALinkItsTypeNoLongerPermitsAndKeepsDedicatedLinksUnremovable: Story = {
   args: {
     api: buildLinksApi({

@@ -63,7 +63,23 @@ export const NeitherKindOfBaselineShowsTheRule: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("checkbox", { name: "Stage baseline" }));
     await userEvent.click(canvas.getByRole("checkbox", { name: "Manual baseline" }));
-    await expect(canvas.getByRole("alert")).toHaveTextContent("Select at least one kind of baseline");
+    await expect(canvas.getByRole("alert")).toHaveTextContent("Select at least one kind of baseline or approval");
+  },
+};
+
+export const CheckingApprovalsAloneIsEnough: Story = {
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("checkbox", { name: "Stage baseline" }));
+    await userEvent.click(canvas.getByRole("checkbox", { name: "Manual baseline" }));
+    const select = canvas.getByRole("combobox", { name: "Check record approvals" });
+    await expect(select).toHaveValue("off");
+    await expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Off", "Manual approvals only", "Automated approvals only", "Manual and automated approvals",
+    ]);
+    await userEvent.selectOptions(select, "manual");
+    await expect(args.onChange).toHaveBeenLastCalledWith(expect.objectContaining({ approval_checks: "manual" }));
+    await expect(canvas.queryByRole("alert")).not.toBeInTheDocument();
   },
 };
 

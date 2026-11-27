@@ -62,7 +62,7 @@ export const SavingSendsTheWholePolicy: Story = {
     await userEvent.click(canvas.getByRole("checkbox", { name: "Required approvals" }));
     await userEvent.click(canvas.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(profileBaselineUrl, {
-      applies_to_stage: true, applies_to_manual: true, notify_managers: true, checks: ["traceability:required_approvals"],
+      applies_to_stage: true, applies_to_manual: true, approval_checks: "off", notify_managers: true, checks: ["traceability:required_approvals"],
       required_fields: [{ artefact_type: "requirement", field_key: "reasoning" }],
     }));
     await expect(await within(document.body).findByText("Baseline policy saved.")).toBeInTheDocument();

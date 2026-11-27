@@ -1,12 +1,14 @@
 import { useApprovalStatus } from "../hooks/useApprovalStatus";
 import { useMutation } from "../hooks/useMutation";
 import { useRecordCode } from "../hooks/useRecordCode";
-import { Bell, BellOff, FolderOpen, GitPullRequest, Plus, Trash2 } from "lucide-react";
+import { Bell, BellOff, Check, FolderOpen, GitPullRequest, Plus, Trash2 } from "lucide-react";
 import { RecordCode } from "../components/RecordCode";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
+import { artefactLinksApi } from "../api/artefactLinks";
 import { api } from "../api/client";
+import { ActionMenu } from "../components/ActionMenu";
 import { listRequirementTypes } from "../api/requirementTypes";
 import type {
   ActionTypeDefinition,
@@ -18,6 +20,7 @@ import type {
   Project,
   ProjectStage,
   Requirement,
+  LinkedRequirementAction,
   RequirementAction,
   RequirementReviewOutcome,
   PrincipalRef,
@@ -164,7 +167,7 @@ export function RequirementDetailPage() {
   // --- Linked requirement actions --------------------------------------
   // "Link existing" is a one-field `Popover`, "create and link" opens a
   // `Modal`, and unlinking goes through `ConfirmDialog`.
-  const [linkedActions, setLinkedActions] = useState<RequirementAction[]>([]);
+  const [linkedActions, setLinkedActions] = useState<LinkedRequirementAction[]>([]);
   const [projectActionTypes, setProjectActionTypes] = useState<ActionTypeDefinition[]>([]);
   const [projectActions, setProjectActions] = useState<RequirementAction[]>([]);
   const [existingActionToLink, setExistingActionToLink] = useState("");
@@ -202,7 +205,7 @@ export function RequirementDetailPage() {
       api.get<CustomFieldDefinition[]>(`/api/v1/projects/${projectId}/custom-fields?entity_kind=requirement`),
       api.get<ProjectStage[]>(`/api/v1/projects/${projectId}/stages`),
       api.get<ActionTypeDefinition[]>(`/api/v1/projects/${projectId}/action-types`),
-      api.get<RequirementAction[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/actions`),
+      api.get<LinkedRequirementAction[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/actions`),
       api.get<RequirementAction[]>(`/api/v1/projects/${projectId}/actions`),
       listRequirementTypes(projectId),
     ]);
@@ -332,6 +335,14 @@ export function RequirementDetailPage() {
 
   /** Unlinking an action is gated in every project, unlike `removeLink`,
    * which gates only when `linksLockedForCR`. */
+  // Confirms the carried-over link between this requirement and an action, so traceability counts it.
+  async function confirmActionLink(action: LinkedRequirementAction) {
+    if (!projectId || !requirementId) return;
+    if (!(await run(() => artefactLinksApi.confirm(projectId, "requirement", requirementId, action.link_id), { failure: strings.artefactLinks.confirmFailed }))) return;
+    showToast(strings.artefactLinks.confirmed);
+    reload();
+  }
+
   async function unlinkAction(actionId: string, reason?: string) {
     if (requirement?.is_locked) {
       await api.post(`/api/v1/projects/${projectId}/change-requests`, {
@@ -899,18 +910,35 @@ export function RequirementDetailPage() {
               <Badge tone={REQUIREMENT_ACTION_OUTCOME_TONE[a.outcome_status]}>
                 {REQUIREMENT_ACTION_OUTCOME_LABEL[a.outcome_status]}
               </Badge>
+              {a.link_note && <span className="text-muted"> {a.link_note}</span>}
             </span>
-            <button
-              className="btn btn-danger"
-              title={strings.requirements.unlinkAction}
-              aria-label={strings.requirements.unlinkAction}
-              onClick={() => {
-                setUnlinkActionReason("");
-                setActionToUnlink(a);
-              }}
-            >
-              <Trash2 />
-            </button>
+            {a.link_note ? (
+              <ActionMenu
+                triggerLabel={strings.requirements.linkedActionMenuLabel(a.title)}
+                items={[
+                  { label: strings.artefactLinks.confirmAction, icon: <Check aria-hidden="true" />, onSelect: () => void confirmActionLink(a) },
+                  {
+                    label: strings.requirements.unlinkAction, icon: <Trash2 aria-hidden="true" />, danger: true,
+                    onSelect: () => {
+                      setUnlinkActionReason("");
+                      setActionToUnlink(a);
+                    },
+                  },
+                ]}
+              />
+            ) : (
+              <button
+                className="btn btn-danger"
+                title={strings.requirements.unlinkAction}
+                aria-label={strings.requirements.unlinkAction}
+                onClick={() => {
+                  setUnlinkActionReason("");
+                  setActionToUnlink(a);
+                }}
+              >
+                <Trash2 />
+              </button>
+            )}
           </div>
         ))}
         {actionToUnlink && (

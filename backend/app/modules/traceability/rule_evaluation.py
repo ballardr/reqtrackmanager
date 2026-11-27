@@ -17,6 +17,9 @@ Design decisions:
   so a link to a removed record never satisfies a rule.
 - Links that cross into an ancestor or descendant project are counted only when `include_cross_project` is set; the default is
   the project's own links, so a rule's result never depends on records the viewer may not open.
+- A link carrying a `note` was not authored directly (a link a requirement copied when made independent), so a leaf or
+  rule met only by counting such links is `inherited`, not met, until a person confirms or replaces them. Each leaf counts
+  both ways from one read of the links, and the status comes from the generic link field, never from a record type.
 - Evaluation only computes. It never changes a record, never blocks a transition and reports what it cannot evaluate (a record
   type or field that is no longer registered) as `problems` instead of guessing.
 
@@ -27,13 +30,14 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
 from app.modules import registry
 from app.modules.traceability import rule_tree
+from app.modules.traceability.enums import TraceabilityState
 from app.modules.traceability.rule_tree import LinkLeaf, Node
 from app.services import record_summaries, relationships
 
@@ -46,13 +50,24 @@ class LeafResult:
         path: The leaf's position in the `requires` tree (`rule_tree.leaves`).
         label: The leaf's name in a status view.
         count: Distinct records found at the other end.
-        met: Whether `count` is within the leaf's minimum and maximum.
+        confirmed: Distinct records reached by at least one link a person authored or confirmed (no `note`).
+        minimum: The leaf's minimum.
+        maximum: The leaf's maximum, or `None`.
+        state: `unmet` when `count` is outside the limits, `inherited` when only `count` is inside them, else `met`.
     """
 
     path: str
     label: str
     count: int
-    met: bool
+    confirmed: int
+    minimum: int
+    maximum: int | None
+    state: TraceabilityState
+
+    @property
+    def met(self) -> bool:
+        """Whether the leaf is met by links a person authored or confirmed."""
+        return self.state == TraceabilityState.MET
 
 
 @dataclass(frozen=True)
@@ -61,12 +76,13 @@ class RecordResult:
 
     Attributes:
         record_id: The record.
-        satisfied: Whether the `requires` tree is satisfied.
+        state: `unmet` when the `requires` tree is not satisfied by every link, `inherited` when it is satisfied only
+            by counting carried-over links, else `met`.
         leaves: One result per link leaf, in tree order.
     """
 
     record_id: uuid.UUID
-    satisfied: bool
+    state: TraceabilityState
     leaves: tuple[LeafResult, ...]
 
 
@@ -84,15 +100,9 @@ class RuleEvaluation:
     in_scope: tuple[RecordResult, ...] = ()
     problems: tuple[str, ...] = field(default=())
 
-    @property
-    def satisfied_count(self) -> int:
-        """In-scope records the rule holds for."""
-        return sum(1 for r in self.in_scope if r.satisfied)
-
-    @property
-    def unsatisfied_count(self) -> int:
-        """In-scope records the rule does not hold for."""
-        return len(self.in_scope) - self.satisfied_count
+    def count(self, state: TraceabilityState) -> int:
+        """In-scope records in `state`."""
+        return sum(1 for r in self.in_scope if r.state == state)
 
 
 def leaf_label(leaf: LinkLeaf) -> str:
@@ -136,14 +146,15 @@ class _OtherEnds:
 def _leaf_counts(
     db: Session, project_id: uuid.UUID, source_type: str, source_ids: Sequence[uuid.UUID], leaf: LinkLeaf, ends: _OtherEnds,
     *, include_cross_project: bool,
-) -> dict[uuid.UUID, int]:
-    """Distinct matching records at the other end of the links of each source record, for one leaf."""
+) -> dict[uuid.UUID, tuple[int, int]]:
+    """For each source record and one leaf: the distinct matching records at the other end of its links, and how many of
+    them a link without a `note` reaches."""
     if leaf.direction == "outgoing":
         rows = relationships.get_links_from_many(db, source_type, source_ids, include_cross_project=include_cross_project)
     else:
         rows = relationships.get_links_to_many(db, source_type, source_ids, include_cross_project=include_cross_project)
     wanted_types = {t.artefact_type for t in leaf.targets}
-    candidates: list[tuple[uuid.UUID, str, uuid.UUID, uuid.UUID]] = []
+    candidates: list[tuple[uuid.UUID, str, uuid.UUID, uuid.UUID, bool]] = []
     for link in rows:
         if leaf.link_types.mode == "untyped" and link.link_type_id is not None:
             continue
@@ -154,15 +165,16 @@ def _leaf_counts(
         else:
             own, other_type, other_id, other_project = link.target_id, link.source_type, link.source_id, link.source_project_id
         if other_type in wanted_types:
-            candidates.append((own, other_type, other_id, other_project or project_id))
+            candidates.append((own, other_type, other_id, other_project or project_id, link.note is None))
     grouped: dict[tuple[str, uuid.UUID], set[uuid.UUID]] = defaultdict(set)
-    for _own, other_type, other_id, other_project in candidates:
+    for _own, other_type, other_id, other_project, _authored in candidates:
         grouped[(other_type, other_project)].add(other_id)
     needs_subtype = any(t.subtype for t in leaf.targets)
     for (other_type, other_project), ids in grouped.items():
         ends.load(other_type, other_project, ids, want_subtype=needs_subtype)
     matched: dict[uuid.UUID, set[tuple[str, uuid.UUID]]] = defaultdict(set)
-    for own, other_type, other_id, other_project in candidates:
+    confirmed: dict[uuid.UUID, set[tuple[str, uuid.UUID]]] = defaultdict(set)
+    for own, other_type, other_id, other_project, authored in candidates:
         counted, subtype = ends.subtype_of(other_type, other_project, other_id)
         if not counted:
             continue
@@ -171,8 +183,17 @@ def _leaf_counts(
                 continue
             if target.subtype is None or (subtype is not None and subtype.casefold() == target.subtype.casefold()):
                 matched[own].add((other_type, other_id))
+                if authored:
+                    confirmed[own].add((other_type, other_id))
                 break
-    return {own: len(found) for own, found in matched.items()}
+    return {own: (len(found), len(confirmed.get(own, ()))) for own, found in matched.items()}
+
+
+def _state(holds_with_all: bool, holds_confirmed: bool) -> TraceabilityState:
+    """The state of a leaf or a rule from whether it holds counting every link and counting only confirmed ones."""
+    if not holds_with_all:
+        return TraceabilityState.UNMET
+    return TraceabilityState.MET if holds_confirmed else TraceabilityState.INHERITED
 
 
 def _problems(
@@ -195,7 +216,7 @@ def _problems(
 
 def evaluate_rule(
     db: Session, project_id: uuid.UUID, *, source_type: str, source_subtype: str | None, applies_when: Node | None, requires: Node,
-    include_cross_project: bool = False,
+    include_cross_project: bool = False, record_ids: Collection[uuid.UUID] | None = None,
 ) -> RuleEvaluation:
     """Evaluates a rule for the records of a project.
 
@@ -207,6 +228,7 @@ def evaluate_rule(
         applies_when: The scope tree, or `None` for every record.
         requires: The requirement tree.
         include_cross_project: Count links that cross into an ancestor or descendant project.
+        record_ids: Evaluate only these records (and read only these); `None` for every record of the type.
 
     Returns:
         The evaluation: every in-scope record with a result per leaf, or `problems` when the rule names something that is not
@@ -216,8 +238,11 @@ def evaluate_rule(
     problems = _problems(source_type, applies_when, requires, fields)
     if problems:
         return RuleEvaluation(source_total=0, problems=tuple(problems))
-    summaries = [s for s in record_summaries.list_summaries(db, project_id, source_type) if not s.is_archived]
-    ids = sorted(s.id for s in summaries)
+    summaries = (
+        record_summaries.list_summaries(db, project_id, source_type) if record_ids is None
+        else list(record_summaries.read_summaries(db, project_id, source_type, sorted(record_ids)).values())
+    )
+    ids = sorted(s.id for s in summaries if not s.is_archived)
     if source_subtype is not None and ids:
         names = registry.resolve_record_subtypes(db, project_id, source_type, ids)
         ids = [i for i in ids if (names.get(i) or "").casefold() == source_subtype.casefold()]
@@ -240,9 +265,18 @@ def evaluate_rule(
     }
     results = []
     for record_id in in_scope:
-        counts = {path: found.get(record_id, 0) for path, found in per_leaf.items()}
+        counts = {path: found.get(record_id, (0, 0)) for path, found in per_leaf.items()}
+        every = {path: c[0] for path, c in counts.items()}
+        authored = {path: c[1] for path, c in counts.items()}
         results.append(RecordResult(
-            record_id=record_id, satisfied=rule_tree.satisfied(requires, counts),
-            leaves=tuple(LeafResult(path, leaf_label(leaf), counts[path], rule_tree.leaf_met(leaf, counts[path])) for path, leaf in leaves),
+            record_id=record_id,
+            state=_state(rule_tree.satisfied(requires, every), rule_tree.satisfied(requires, authored)),
+            leaves=tuple(
+                LeafResult(
+                    path, leaf_label(leaf), every[path], authored[path], leaf.minimum, leaf.maximum,
+                    _state(rule_tree.leaf_met(leaf, every[path]), rule_tree.leaf_met(leaf, authored[path])),
+                )
+                for path, leaf in leaves
+            ),
         ))
     return RuleEvaluation(source_total=total, in_scope=tuple(results))

@@ -143,6 +143,18 @@ You need to view the record you link to, and one of these on the record you link
 
 The panel shows its add and remove controls only to people who may use them on that record. Other kinds of record (a decision, a pain point, …) need the Link or Manage permission. API clients and AI assistants use the same rules through one general endpoint that works from either end for any pair of records (the MCP tools `list_artefact_link_types`, `search_artefact_link_candidates`, `list_artefact_link_browse`, `create_artefact_link` and `delete_artefact_link`, in [write mode](../api-integrations/ai-assistants-mcp/overview.md)). A link between a record and an approved requirement follows the project's [change request rule for links](requirements-management.md#traceability-links) if one is set. A pair already linked the same way is refused, and so is the mirror image of a two-way link type such as "Related to".
 
+## Carried-over links
+
+A link that was copied from another record, for example when a requirement's alias is [made independent](components-on-records.md#requirements-in-several-components), shows a note saying where it came from. **Confirm link** removes the note, in the Links panel or in a requirement's Actions section. Confirming needs the same permission as removing the link and is recorded in the record's activity.
+
+```mermaid
+flowchart LR
+    C["Copied link<br/>with a note"] -->|"Confirm link"| K["Ordinary link"]
+    C -->|"Remove, then add another"| N["Replacement link"]
+```
+
+Where [traceability rules](../modules/governance-module/baseline-policies.md#required-traceability-rules) are in use, a rule met only by carried-over links is reported as *inherited* rather than met.
+
 ## Linking while you create a record
 
 The form that creates a record has a **Link to** field, so you can relate it to others in the same trip instead of opening its Links panel afterwards. It is on the create forms for requirements, actions, pain points, stakeholder needs, personas, stakeholders, engagements, risks, decisions, open questions, strategies, future states and guiding principles (a project's own records; an organisation's records are linked from within a project).

@@ -13,7 +13,14 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.modules.traceability.enums import DEFAULT_HEALTH_INTERVAL_HOURS, HealthMode, ProfileMode, ProfileOutcome, ProfileTargetKind
+from app.modules.traceability.enums import (
+    DEFAULT_HEALTH_INTERVAL_HOURS,
+    ApprovalCheckMode,
+    HealthMode,
+    ProfileMode,
+    ProfileOutcome,
+    ProfileTargetKind,
+)
 from app.modules.traceability.models import (
     EXEMPTION_REASON_MAX_LENGTH,
     PROFILE_DESCRIPTION_MAX_LENGTH,
@@ -522,7 +529,10 @@ class BaselineSettingsIn(BaseModel):
 
     Attributes:
         applies_to_stage: Whether the checks run before a stage baseline (a stage entering a locked phase).
-        applies_to_manual: Whether the checks run before a manual baseline. At least one of the two must be true.
+        applies_to_manual: Whether the checks run before a manual baseline.
+        approval_checks: Which approvals the checks also run before: `off`, `manual` (a person approving one record),
+            `automated` (a stage approved because its review deadline passed) or `manual_and_automated`. At least one
+            baseline kind or approval must be chosen.
         notify_managers: Whether the project's managers are told when a check refuses the automatic approval of a stage.
         checks: The namespaced keys (`<module key>:<check key>`) of the checks to run.
         required_fields: The fields the required-fields check demands.
@@ -530,6 +540,7 @@ class BaselineSettingsIn(BaseModel):
 
     applies_to_stage: bool = True
     applies_to_manual: bool = False
+    approval_checks: ApprovalCheckMode = ApprovalCheckMode.OFF
     notify_managers: bool = True
     checks: list[str] = Field(default_factory=list, max_length=100)
     required_fields: list[RequiredFieldIn] = Field(default_factory=list, max_length=500)
@@ -540,6 +551,7 @@ class BaselineSettingsOut(BaseModel):
 
     applies_to_stage: bool
     applies_to_manual: bool
+    approval_checks: ApprovalCheckMode
     notify_managers: bool
     checks: list[str]
     required_fields: list[RequiredFieldIn]
@@ -626,6 +638,8 @@ class EffectiveBaselineCheckOut(BaseModel):
         available: Whether the check is registered and in effect for the project, so it runs.
         stage: Whether it runs before a stage baseline.
         manual: Whether it runs before a manual baseline.
+        manual_approval: Whether it runs when a person approves a record.
+        automated_approval: Whether it runs when the review deadline approves a stage.
         sources: Profile names, then `project` or `parent_project`, that enable it.
     """
 
@@ -634,6 +648,8 @@ class EffectiveBaselineCheckOut(BaseModel):
     available: bool
     stage: bool
     manual: bool
+    manual_approval: bool
+    automated_approval: bool
     sources: list[str]
 
 
@@ -646,6 +662,8 @@ class EffectiveBaselineFieldOut(BaseModel):
         field_label: The column's name in this project, `null` when the type has no such column here (the field is skipped).
         stage: Whether it is demanded before a stage baseline.
         manual: Whether it is demanded before a manual baseline.
+        manual_approval: Whether it is demanded when a person approves a record.
+        automated_approval: Whether it is demanded when the review deadline approves a stage.
         sources: Profile names, then `project` or `parent_project`, that name it.
     """
 
@@ -654,6 +672,8 @@ class EffectiveBaselineFieldOut(BaseModel):
     field_label: str | None
     stage: bool
     manual: bool
+    manual_approval: bool
+    automated_approval: bool
     sources: list[str]
 
 

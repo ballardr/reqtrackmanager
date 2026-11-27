@@ -6,6 +6,7 @@ Generic link creation and removal for any artefact of a project: the one authori
 
 Responsibilities:
 - Offer the link types usable from an artefact (`usable_options`).
+- Confirm a carried-over link (`confirm_link_for_artefact`), under the same authority as removing it.
 - Create (`create_link_for_artefact`) and remove (`delete_link_for_artefact`) a link after checking: both ends
   are visible records of the project (module enabled, `view` held); the caller holds `link` or `manage` on the
   page artefact's type, or is a stakeholder, project administrator or manager linking a core record while no
@@ -311,6 +312,88 @@ def create_link_for_artefact(
     return CreatedLink(link=link, link_type=link_type, outgoing=outgoing, other_type=other_type, other=other)
 
 
+def _touching_link_or_404(db: Session, link_id: uuid.UUID, artefact_type: str, artefact_id: uuid.UUID) -> ArtefactLink:
+    """The link `link_id` when it has the page artefact at one end, else 404."""
+    link = db.get(ArtefactLink, link_id)
+    if link is None or (artefact_type, artefact_id) not in (
+        (link.source_type, link.source_id), (link.target_type, link.target_id)
+    ):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Link not found.")
+    return link
+
+
+def _other_end_project(
+    db: Session, project: Project, user_id: uuid.UUID, link: ArtefactLink, artefact_type: str, artefact_id: uuid.UUID,
+) -> Project:
+    """The project of the far end of a link the page artefact is changing: `project` for a same-project link.
+
+    Raises:
+        HTTPException: 404 for a cross-level link unless the page end is in this project, the other end's project is one
+            the caller can open and the other record is still visible there.
+    """
+    if link.source_project_id is None or link.target_project_id is None:
+        return project
+    page_is_source = (artefact_type, artefact_id) == (link.source_type, link.source_id)
+    page_project_id, far_project_id = (
+        (link.source_project_id, link.target_project_id) if page_is_source
+        else (link.target_project_id, link.source_project_id)
+    )
+    if page_project_id != project.id or not is_link_live(db, link):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Link not found.")
+    try:
+        other_project = related_project_or_404(db, project, user_id, far_project_id)
+    except HTTPException as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Link not found.") from exc
+    far_type, far_id = (link.target_type, link.target_id) if page_is_source else (link.source_type, link.source_id)
+    far_resolver = ArtefactResolver(db, other_project, user_id)
+    far_resolver.resolve({far_type: {far_id}})
+    if far_resolver.visible((far_type, far_id)) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Link not found.")
+    return other_project
+
+
+def confirm_link_for_artefact(
+    db: Session,
+    *,
+    project: Project,
+    user_id: uuid.UUID,
+    artefact_type: str,
+    artefact_id: uuid.UUID,
+    link_id: uuid.UUID,
+) -> None:
+    """Confirms a carried-over link touching the page artefact: removes its `note`, so it reads as a link a person
+    stands behind (a traceability rule no longer reports it as inherited).
+
+    Needs the same authority as removing the link, structural and dedicated links included, since the link itself does
+    not change. For the same reason a project that sends link changes to approved requirements through a change request
+    does not require one here; a person with only the default role still cannot touch an approved requirement's links.
+
+    Args:
+        db: Active session; the change and audit event are added, not committed.
+        project: The project the request is scoped to (membership already checked).
+        user_id: The acting user.
+        artefact_type / artefact_id: The page artefact; the link must touch it.
+        link_id: The link to confirm.
+
+    Raises:
+        HTTPException: 404 the artefact is not visible or the link does not touch it; 403 neither `link` nor `manage`
+            held, or the default role and an end is approved; 409 the link carries no note to confirm.
+    """
+    resolver = ArtefactResolver(db, project, user_id)
+    require_page_artefact(db, resolver, project, artefact_type, artefact_id)
+    authority = require_link_authority(resolver, artefact_type)
+    link = _touching_link_or_404(db, link_id, artefact_type, artefact_id)
+    other_project = _other_end_project(db, project, user_id, link, artefact_type, artefact_id)
+    require_unlocked_for_role(db, authority, [(link.source_type, link.source_id), (link.target_type, link.target_id)])
+    if link.note is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This link was not carried over, so there is nothing to confirm.")
+    audit_link(db, link, action="link_confirmed", actor_id=user_id, projects=(project, other_project), via_detail={
+        "note": link.note, "authorised_by": authority,
+    })
+    link.note = None
+    db.flush()
+
+
 def delete_link_for_artefact(
     db: Session,
     *,
@@ -337,11 +420,7 @@ def delete_link_for_artefact(
     resolver = ArtefactResolver(db, project, user_id)
     require_page_artefact(db, resolver, project, artefact_type, artefact_id)
     authority = require_link_authority(resolver, artefact_type)
-    link = db.get(ArtefactLink, link_id)
-    if link is None or (artefact_type, artefact_id) not in (
-        (link.source_type, link.source_id), (link.target_type, link.target_id)
-    ):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Link not found.")
+    link = _touching_link_or_404(db, link_id, artefact_type, artefact_id)
     if link.link_type_id is None:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -353,26 +432,7 @@ def delete_link_for_artefact(
             status.HTTP_400_BAD_REQUEST,
             f'"{link_type.forward_name}" links belong to their own action and cannot be removed here.',
         )
-    other_project = project
-    if link.source_project_id is not None and link.target_project_id is not None:
-        # A cross-level link: the page end must be in this project, the other end's project
-        # must still be one the caller can open, and the other end must still be visible there.
-        page_is_source = (artefact_type, artefact_id) == (link.source_type, link.source_id)
-        page_project_id, far_project_id = (
-            (link.source_project_id, link.target_project_id) if page_is_source
-            else (link.target_project_id, link.source_project_id)
-        )
-        if page_project_id != project.id or not is_link_live(db, link):
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "Link not found.")
-        try:
-            other_project = related_project_or_404(db, project, user_id, far_project_id)
-        except HTTPException as exc:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "Link not found.") from exc
-        far_type, far_id = (link.target_type, link.target_id) if page_is_source else (link.source_type, link.source_id)
-        far_resolver = ArtefactResolver(db, other_project, user_id)
-        far_resolver.resolve({far_type: {far_id}})
-        if far_resolver.visible((far_type, far_id)) is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "Link not found.")
+    other_project = _other_end_project(db, project, user_id, link, artefact_type, artefact_id)
     require_unlocked_for_role(
         db, authority, [(link.source_type, link.source_id), (link.target_type, link.target_id)]
     )

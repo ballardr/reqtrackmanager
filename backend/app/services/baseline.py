@@ -16,7 +16,8 @@ project; a manual baseline captures only the types the person may snapshot.
 Before anything is approved or captured, the checks the project's baseline policy enables run over the records the
 baseline would hold (`check_baseline`). One failing check refuses the whole baseline with every failure listed
 (`BaselineRefused`); nothing is approved, locked or stored. The checks are the `BaselineCheckProvider`s modules register,
-chosen by the `GovernanceSeam.BASELINE` policy; with none enabled the baseline is written exactly as before.
+chosen by the `GovernanceSeam.BASELINE` policy; with none enabled no check runs. The same checks can run when a person
+approves one record (`check_record_approval`) and, beside the stage checks, when the review deadline approves a stage.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from dataclasses import dataclass
 from typing import Literal
 from uuid import UUID
 
+from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -48,7 +50,7 @@ from app.services.requirements import apply_new_version, check_status_move, get_
 
 REQUIREMENT_ITEM_TYPE = "requirement"
 
-BaselineKindName = Literal["stage", "manual"]
+BaselineKindName = Literal["stage", "manual", "approval"]
 
 
 @dataclass(frozen=True)
@@ -73,14 +75,14 @@ class BaselineFailure:
 
 
 class BaselineRefused(Exception):
-    """A check of the project's baseline policy failed, so no baseline was written and nothing was approved.
+    """A check of the project's baseline policy failed, so nothing was approved or stored.
 
     Attributes:
         failures: Every failure of every enabled check, ordered by check, type and code.
     """
 
-    def __init__(self, failures: Sequence[BaselineFailure]) -> None:
-        super().__init__(refusal_message(failures))
+    def __init__(self, failures: Sequence[BaselineFailure], *, kind: BaselineKindName = "stage") -> None:
+        super().__init__(approval_refusal_message(failures) if kind == "approval" else refusal_message(failures))
         self.failures = list(failures)
 
 
@@ -92,6 +94,18 @@ def refusal_message(failures: Sequence[BaselineFailure]) -> str:
         f"The baseline was refused: {records} record{'s' if records != 1 else ''} failed "
         f"{checks} baseline check{'s' if checks != 1 else ''}. Nothing was approved or stored."
     )
+
+
+#: The failures named in an approval refusal's opening sentence; the response lists every one.
+_NAMED_IN_APPROVAL_REFUSAL = 3
+
+
+def approval_refusal_message(failures: Sequence[BaselineFailure]) -> str:
+    """The refusal of one record's approval: the first failures spelled out, since an approval dialog shows only this."""
+    named = " ".join(f.message for f in failures[:_NAMED_IN_APPROVAL_REFUSAL])
+    rest = len(failures) - _NAMED_IN_APPROVAL_REFUSAL
+    more = f" {rest} further failure{'s' if rest != 1 else ''} not shown." if rest > 0 else ""
+    return f"The approval was refused. {named}{more}"
 
 
 def refusal_detail(refused: BaselineRefused) -> dict[str, object]:
@@ -108,13 +122,16 @@ def refusal_detail(refused: BaselineRefused) -> dict[str, object]:
     }
 
 
-def active_checks(db: Session, project: Project, kind: BaselineKindName) -> list[tuple[str, BaselineCheckProvider]]:
-    """The checks that run before a baseline of `kind` in the project.
+def active_checks(
+    db: Session, project: Project, kind: BaselineKindName, *, automated: bool = False,
+) -> list[tuple[str, BaselineCheckProvider]]:
+    """The checks that run before a baseline of `kind` in the project, or before an approval (`approval`).
 
     Args:
         db: An active database session.
         project: The project being baselined.
-        kind: `stage` or `manual`.
+        kind: `stage`, `manual` or `approval`.
+        automated: A stage baseline taken by the review deadline.
 
     Returns:
         `(namespaced key, provider)` for each check the project's baseline policy enables for `kind` whose provider is in
@@ -123,30 +140,31 @@ def active_checks(db: Session, project: Project, kind: BaselineKindName) -> list
     policy = governance_seams.resolve_project_policy(db, project.id, GovernanceSeam.BASELINE)
     if not isinstance(policy, BaselinePolicy):
         return []
-    wanted = set(policy.checks_for(kind))
+    wanted = set(policy.checks_for(kind, automated=automated))
     return [(key, provider) for key, provider in governance_seams.baseline_checks_for_project(db, project.id) if key in wanted]
 
 
 def check_baseline(
     db: Session, project: Project, kind: BaselineKindName, actor_id: UUID | None, records: Mapping[str, Sequence[UUID]],
-    *, checks: Sequence[tuple[str, BaselineCheckProvider]] | None = None,
+    *, checks: Sequence[tuple[str, BaselineCheckProvider]] | None = None, automated: bool = False,
 ) -> list[BaselineFailure]:
     """Runs the enabled checks over the records a baseline would hold.
 
     Args:
         db: An active database session (read only here).
         project: The project being baselined.
-        kind: `stage` or `manual`.
-        actor_id: The person who triggers the baseline.
-        records: The ids the baseline would hold, by registered artefact type.
+        kind: `stage`, `manual` or `approval`.
+        actor_id: The person who triggers it.
+        records: The ids the baseline would hold (or the record being approved), by registered artefact type.
         checks: The checks to run; `active_checks` when omitted.
+        automated: A stage baseline taken by the review deadline.
 
     Returns:
         Every failure of every check, ordered by check key, type and code; empty when all pass or none is enabled. A check
         whose types the baseline holds none of is not run.
     """
-    chosen = active_checks(db, project, kind) if checks is None else checks
-    context = BaselineCheckContext(project_id=project.id, kind=kind, actor_id=actor_id)
+    chosen = active_checks(db, project, kind, automated=automated) if checks is None else checks
+    context = BaselineCheckContext(project_id=project.id, kind=kind, actor_id=actor_id, automated=automated)
     failures: list[BaselineFailure] = []
     for key, provider in chosen:
         wanted = provider.artefact_types or tuple(records)
@@ -158,6 +176,31 @@ def check_baseline(
             for f in provider.check(db, context, inputs)
         )
     return sorted(failures, key=lambda f: (f.check_key, f.artefact_type, f.code, str(f.artefact_id)))
+
+
+def check_record_approval(db: Session, project: Project, actor: User, artefact_type: str, record_id: UUID) -> None:
+    """Runs the checks the project's baseline policy enables for a person's approval over the one record being approved.
+
+    `services.approval_separation.enforce_approval` calls it for every gated type, so a new type needs no call of its
+    own. A path that changes the record as it approves it calls it again after the change.
+
+    Args:
+        db: An active database session; flushed, so the checks read the pending change.
+        project: The record's project.
+        actor: The person approving.
+        artefact_type: The record's registered type.
+        record_id: The record.
+
+    Raises:
+        HTTPException: 409 with `{message, failures[]}` (`refusal_detail`) when a check fails.
+    """
+    checks = active_checks(db, project, "approval")
+    if not checks:
+        return
+    db.flush()
+    failures = check_baseline(db, project, "approval", actor.id, {artefact_type: [record_id]}, checks=checks)
+    if failures:
+        raise HTTPException(status.HTTP_409_CONFLICT, refusal_detail(BaselineRefused(failures, kind="approval")))
 
 
 def _stage_scope(db: Session, project: Project, stage: ProjectStage, component_id: UUID | None) -> tuple[str, list[Requirement]]:
@@ -269,9 +312,9 @@ class CheckEvaluation:
 
 def evaluate_checks(db: Session, project: Project, actor: User) -> CheckEvaluation:
     """Runs every check the project's baseline policy enables over the records `actor` could put in a manual baseline now,
-    writing nothing. The governance health view reads it as baseline readiness: each check runs as the kind of baseline it
-    is enabled for (a check enabled for both runs as both), over every record as it stands, so a failure is a record a
-    baseline taken now would be refused over.
+    writing nothing. The governance health view reads it as readiness: each check runs as each kind of baseline or approval
+    it is enabled for, over every record as it stands, so a failure is a record a baseline taken or an approval made now
+    would be refused over.
 
     Args:
         db: An active database session (read only).
@@ -281,25 +324,33 @@ def evaluate_checks(db: Session, project: Project, actor: User) -> CheckEvaluati
     Returns:
         The checks, the records they covered and the failures (each once); empty when the policy enables no check.
     """
-    stage = active_checks(db, project, "stage")
-    manual = active_checks(db, project, "manual")
-    chosen = list({key: provider for key, provider in [*stage, *manual]}.items())
+    runs: list[tuple[BaselineKindName, bool, list[tuple[str, BaselineCheckProvider]]]] = [
+        ("stage", False, active_checks(db, project, "stage")),
+        ("stage", True, active_checks(db, project, "stage", automated=True)),
+        ("manual", False, active_checks(db, project, "manual")),
+        ("approval", False, active_checks(db, project, "approval")),
+    ]
+    chosen = list({key: provider for _, _, checks in runs for key, provider in checks}.items())
     if not chosen:
         return CheckEvaluation([], {}, [])
     context, providers, requirement_ids = _manual_scope(db, project, actor)
     ids = _record_ids(requirement_ids, _capture_module_records(db, project, context, providers))
     found: dict[tuple[str, str, UUID, str], BaselineFailure] = {}
-    by_kind: list[tuple[BaselineKindName, list[tuple[str, BaselineCheckProvider]]]] = [("stage", stage), ("manual", manual)]
-    for kind, checks in by_kind:
-        if checks:
-            for failure in check_baseline(db, project, kind, actor.id, ids, checks=checks):
-                found.setdefault((failure.check_key, failure.artefact_type, failure.artefact_id, failure.message), failure)
+    done: set[tuple[BaselineKindName, tuple[str, ...]]] = set()
+    for kind, automated, checks in runs:
+        signature = (kind, tuple(key for key, _ in checks))
+        if not checks or signature in done:
+            continue
+        done.add(signature)
+        for failure in check_baseline(db, project, kind, actor.id, ids, checks=checks, automated=automated):
+            found.setdefault((failure.check_key, failure.artefact_type, failure.artefact_id, failure.message), failure)
     failures = sorted(found.values(), key=lambda f: (f.check_key, f.artefact_type, f.code, str(f.artefact_id)))
     return CheckEvaluation(chosen, {t: len(v) for t, v in ids.items()}, failures)
 
 
 def create_baseline_for_stage(
     db: Session, project: Project, stage: ProjectStage, actor: User, *, component_id: UUID | None = None,
+    automated: bool = False,
 ) -> Baseline:
     """Snapshots non-archived requirements' current versions into a baseline.
 
@@ -312,6 +363,8 @@ def create_baseline_for_stage(
         component_id: When set (a component entering a locked phase), only that component's requirements
             that target `stage` are baselined and approved. When not set and component phases are on, the
             requirements of components that have their own track for `stage` are left to those tracks.
+
+        automated: The review deadline is approving the stage, so the automated approval checks run too.
 
     Returns:
         The created Baseline.
@@ -326,11 +379,12 @@ def create_baseline_for_stage(
     )
     providers = enabled_snapshot_providers(db, project)
     captured: dict[str, list[BaselineSnapshotRecord]] | None = None
-    checks = active_checks(db, project, "stage")
+    checks = active_checks(db, project, "stage", automated=automated)
     if checks:
         captured = _capture_module_records(db, project, context, providers)
         failures = check_baseline(
             db, project, "stage", actor.id, _record_ids([r.id for r in requirements], captured), checks=checks,
+            automated=automated,
         )
         if failures:
             raise BaselineRefused(failures)
@@ -358,7 +412,7 @@ def create_baseline_for_stage(
             approval_separation.enforce_approval(
                 db, user=actor, artefact_type="requirement", record_id=requirement.id,
                 creator_id=requirement.creator_id, organization_id=project.organization_id, project_id=project.id,
-                comment=label,
+                comment=label, check_record=False,
             )
             current_version = apply_new_version(
                 db, requirement, current_version, actor,

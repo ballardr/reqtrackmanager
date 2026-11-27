@@ -379,6 +379,7 @@ const en = {
     unlinkActionViaChangeRequestConfirm:
       "This {requirement} is approved — unlinking an action requires a change request. The action itself is not affected either way; it just stops appearing on this {requirement}'s Actions card once approved.",
     noLinkedActions: "No actions linked yet.",
+    linkedActionMenuLabel: (action: string) => `Actions for ${action}`,
     attachments: "Attachments",
     subscribe: "Subscribe",
     unsubscribe: "Unsubscribe",
@@ -3302,6 +3303,11 @@ const en = {
     addFailed: "Could not add this link.",
     removeFailed: "Could not remove this link.",
     removeLabel: (phrase: string, target: string) => `Remove link: ${phrase} ${target}`,
+    confirmAction: "Confirm link",
+    confirmLabel: (phrase: string, target: string) => `Confirm link: ${phrase} ${target}`,
+    confirmed: "Link confirmed.",
+    confirmFailed: "Could not confirm this link.",
+    rowActionsLabel: (phrase: string, target: string) => `Actions for link: ${phrase} ${target}`,
     quick: {
       label: "Link to",
       placeholder: "Search any record by code or title…",

@@ -310,13 +310,16 @@ class GovernanceBaselinePolicy(UUIDPKMixin, TimestampMixin, Base):
         project_id: The owning project, or `None` for a profile's policy.
         applies_to_stage: Whether the checks run before a stage baseline (a stage entering a locked phase).
         applies_to_manual: Whether the checks run before a manual baseline.
+        approval_checks: An `ApprovalCheckMode` value: which approvals the checks also run before.
         notify_managers: Whether the project's managers are told when the automatic approval of a stage is refused by a check.
     """
 
     __tablename__ = "governance_baseline_policies"
     __table_args__ = (
         CheckConstraint("(profile_id IS NULL) <> (project_id IS NULL)", name="ck_governance_baseline_policies_one_owner"),
-        CheckConstraint("applies_to_stage OR applies_to_manual", name="ck_governance_baseline_policies_applies"),
+        CheckConstraint(
+            "applies_to_stage OR applies_to_manual OR approval_checks <> 'off'", name="ck_governance_baseline_policies_applies",
+        ),
         UniqueConstraint("profile_id", name="uq_governance_baseline_policies_profile"),
         UniqueConstraint("project_id", name="uq_governance_baseline_policies_project"),
     )
@@ -329,6 +332,7 @@ class GovernanceBaselinePolicy(UUIDPKMixin, TimestampMixin, Base):
     )
     applies_to_stage: Mapped[bool] = mapped_column(Boolean, default=True)
     applies_to_manual: Mapped[bool] = mapped_column(Boolean, default=False)
+    approval_checks: Mapped[str] = mapped_column(String(24), default="off")
     notify_managers: Mapped[bool] = mapped_column(Boolean, default=True)
 
 

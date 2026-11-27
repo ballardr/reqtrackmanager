@@ -178,6 +178,8 @@ export interface ArtefactLinksApi {
   /** Creates every link or none (a create form's quick-link chips); a refusal names which link failed. */
   createMany(projectId: string, type: string, id: string, links: NewArtefactLink[]): Promise<void>;
   remove(projectId: string, type: string, id: string, linkId: string): Promise<void>;
+  /** Confirms a carried-over link: removes its note, so it counts as a link a person stands behind. */
+  confirm(projectId: string, type: string, id: string, linkId: string): Promise<void>;
 }
 
 function base(projectId: string, type: string, id: string): string {
@@ -227,5 +229,8 @@ export const artefactLinksApi: ArtefactLinksApi = {
   },
   remove: async (projectId, type, id, linkId) => {
     await api.delete(`${base(projectId, type, id)}/links/${linkId}`);
+  },
+  confirm: async (projectId, type, id, linkId) => {
+    await api.post(`${base(projectId, type, id)}/links/${linkId}/confirm`);
   },
 };

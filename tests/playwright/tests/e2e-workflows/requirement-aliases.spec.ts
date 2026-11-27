@@ -146,9 +146,11 @@ test.describe("requirement aliases", () => {
     });
 
     await test.step("a new alias is refused by the server with the reason", async () => {
+      // A category and its own component: the two lists are not ordered alike.
+      const categories = await (await page.request.get(`${apiBaseUrl}/api/v1/projects/${world.projectId}/categories`, { headers: world.headers })).json();
+      const own = categories.find((c: { id: string }) => c.id !== world.hardware.categoryId);
       const other = await post(page.request, world.headers, `/projects/${world.projectId}/requirements`, {
-        name: "Other", component_id: (await (await page.request.get(`${apiBaseUrl}/api/v1/projects/${world.projectId}/components`, { headers: world.headers })).json())[0].id,
-        category_id: (await (await page.request.get(`${apiBaseUrl}/api/v1/projects/${world.projectId}/categories`, { headers: world.headers })).json())[0].id,
+        name: "Other", component_id: own.component_id, category_id: own.id,
       });
       const refused = await page.request.put(`${apiBaseUrl}/api/v1/projects/${world.projectId}/requirements/${other.id}/aliases`, {
         headers: world.headers, data: { places: [{ component_id: world.hardware.componentId, category_id: world.hardware.categoryId }] },

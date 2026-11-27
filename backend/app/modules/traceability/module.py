@@ -23,8 +23,8 @@ Registered contributions:
   reminder lead and default owner of a record type) and the baseline policy (`baseline_policy`: the checks that run before
   a baseline and the fields a record must have filled) of governance profiles and projects, each in force while its
   sub-component is effective.
-- `baseline_check_providers`: the required-fields and required-approvals checks (`baseline_checks`); a check runs only where
-  a baseline policy enables it.
+- `baseline_check_providers`: the required-fields, required-approvals and Required traceability rule checks
+  (`baseline_checks`); a check runs only where a baseline policy enables it, before a baseline or an approval.
 - Roles: Governance Manager and Traceability Manager, each as a project role and an organisation role (the organisation
   role also holds the project atom, so it manages every project's policy).
 
@@ -76,6 +76,7 @@ from app.modules.traceability import (
     rule_fields,
     rules,
     stage_workflow_policy,
+    status,
 )
 from app.modules.traceability._shared import (
     APPROVAL_POLICIES,
@@ -201,6 +202,10 @@ MODULE_DEFINITION = ModuleDefinition(
             key=baseline_checks.REQUIRED_APPROVALS_KEY, name="Required approvals",
             artefact_types=baseline_checks.APPROVAL_CHECKED_TYPES, check=baseline_checks.check_required_approvals,
             sub_component=BASELINE_POLICIES,
+        ),
+        BaselineCheckProvider(
+            key=status.RULES_CHECK_KEY, name="Traceability rules", artefact_types=(),
+            check=baseline_checks.check_traceability_rules, sub_component=TRACEABILITY_RULES,
         ),
     ),
     profile_contributors=(

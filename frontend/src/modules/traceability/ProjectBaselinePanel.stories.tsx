@@ -35,7 +35,7 @@ export const ShowsWhatAppliesNowWithSources: Story = {
     const canvas = within(canvasElement);
     const checks = within(await canvas.findByRole("table", { name: "Baseline checks in force" }));
     const required = checks.getByRole("cell", { name: "Required fields" }).closest("tr")!;
-    await expect(within(required).getByText("Stage and manual baselines")).toBeInTheDocument();
+    await expect(within(required).getByText("Stage baselines, manual baselines")).toBeInTheDocument();
     await expect(within(required).getByText("Assurance profile, This project")).toBeInTheDocument();
     const missing = checks.getByRole("cell", { name: /compliance:evidence/ }).closest("tr")!;
     await expect(within(missing).getByText("Unavailable")).toBeInTheDocument();
@@ -70,7 +70,7 @@ export const SavingSendsTheProjectsOwnPolicy: Story = {
     await userEvent.click(form.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(projectBaselineUrl, {
       settings: {
-        applies_to_stage: true, applies_to_manual: true, notify_managers: true, checks: ["traceability:required_approvals"],
+        applies_to_stage: true, applies_to_manual: true, approval_checks: "off", notify_managers: true, checks: ["traceability:required_approvals"],
         required_fields: [{ artefact_type: "requirement", field_key: "reasoning" }],
       },
     }));

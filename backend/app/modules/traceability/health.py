@@ -48,7 +48,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 
 from fastapi import HTTPException, status
-from sqlalchemy import exists, func, select
+from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.audit import AuditEvent
@@ -83,6 +83,8 @@ ON_DEMAND_GUIDANCE_RECORDS = 300
 _POLICY_EVENT_TYPES = (
     "governance_profile", "governance_approval_policy", "governance_review_policy", "governance_baseline_policy",
 )
+#: Events that change what a baseline check finds without changing a governed record: links and traceability rules.
+_CHECK_INPUT_EVENT_TYPES = ("artefact_link", "requirement_link", "requirement_action_link", "governance_traceability_rule")
 _LOCK_NAMESPACE = 7304
 #: The hourly sweep runs a few minutes past the hour, so a snapshot refreshed on the previous sweep is due again.
 _SWEEP_TOLERANCE = timedelta(minutes=10)
@@ -420,7 +422,11 @@ def compute_reviews(db: Session, project: Project, today: date) -> list[ReviewFi
 
 def checks_enabled(db: Session, project: Project) -> bool:
     """Whether the project's baseline policy enables any check for either kind of baseline."""
-    return bool(core_baseline.active_checks(db, project, "stage") or core_baseline.active_checks(db, project, "manual"))
+    return bool(
+        core_baseline.active_checks(db, project, "stage", automated=True)
+        or core_baseline.active_checks(db, project, "manual")
+        or core_baseline.active_checks(db, project, "approval")
+    )
 
 
 def compute_checks(db: Session, project: Project, runner: User) -> ChecksFigure:
@@ -499,8 +505,9 @@ def _snapshot(db: Session, project_id: uuid.UUID) -> GovernanceHealthSnapshot | 
 
 
 def _governed_event_types() -> list[str]:
-    """The audit entity types whose events change the figures."""
-    return sorted({p.artefact_type for _, p in registry.get_health_providers()} | set(_POLICY_EVENT_TYPES))
+    """The audit entity types whose events change the figures or the check results."""
+    providers = {p.artefact_type for _, p in registry.get_health_providers()}
+    return sorted(providers | set(_POLICY_EVENT_TYPES) | set(_CHECK_INPUT_EVENT_TYPES))
 
 
 def is_stale(db: Session, project: Project, snapshot: GovernanceHealthSnapshot) -> bool:
@@ -512,16 +519,19 @@ def is_stale(db: Session, project: Project, snapshot: GovernanceHealthSnapshot) 
         snapshot: Its stored snapshot.
 
     Returns:
-        `True` when an audit event of a governed type in the project, or a governance profile event of its organisation, is
-        newer than `snapshot.computed_at`.
+        `True` when an audit event of a governed type, a link or a traceability rule in the project, or a governance profile
+        or profile rule event of its organisation, is newer than `snapshot.computed_at`.
     """
     in_project = exists().where(
         AuditEvent.project_id == project.id, AuditEvent.entity_type.in_(_governed_event_types()),
         AuditEvent.created_at > snapshot.computed_at,
     )
     in_organization = exists().where(
-        AuditEvent.entity_type == "governance_profile", AuditEvent.organization_id == project.organization_id,
-        AuditEvent.created_at > snapshot.computed_at,
+        or_(
+            AuditEvent.entity_type == "governance_profile",
+            and_(AuditEvent.entity_type == "governance_traceability_rule", AuditEvent.project_id.is_(None)),
+        ),
+        AuditEvent.organization_id == project.organization_id, AuditEvent.created_at > snapshot.computed_at,
     )
     return bool(db.scalar(select(in_project | in_organization)))
 

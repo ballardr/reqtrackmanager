@@ -12,12 +12,12 @@ moved here from Module 5 Phase 1, and the requests in
 [issue #41](https://github.com/ballardr/reqtrackmanager/issues/41) (Q18). This plan replaces the former separate Module 7
 and Module 8 plans; Module 8 is no longer a separate number.
 
-**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phases 1, 1b, 2, 3, 4, 5 and 6 done 2026-11-26; Phase 7 (steps 7a to 7k), Phase 7.5 (steps a to g), Phases 8, 9, 10 and 11 done 2026-11-26. **Decision tags:** every
+**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phases 1, 1b, 2, 3, 4, 5 and 6 done 2026-11-26; Phase 7 (steps 7a to 7k), Phase 7.5 (steps a to g), Phases 8, 9, 10 and 11 done 2026-11-26. Phase 12 done 2026-11-28. **Decision tags:** every
 decision says `Decided by: User` or `Decided by: Agent`.
 
 ## Status / Resume Here
 
-14 / 23 phases complete. Phase 12 is next.
+15 / 23 phases complete. Phase 13 is next.
 
 | # | Phase | Half | Status |
 |---|-------|------|--------|
@@ -35,7 +35,7 @@ decision says `Decided by: User` or `Decided by: Agent`.
 | 9 | Governance docs website coverage | Governance | [x] Done 2026-11-26 |
 | 10 | Requirement types (moved from Module 5 Phase 1) | Traceability | [x] Done 2026-11-26 |
 | 11 | Traceability rule configuration, including the requirement hierarchy | Traceability | [x] Done 2026-11-26 |
-| 12 | Enforcement levels, status and baseline hand-off | Traceability | [ ] Not started |
+| 12 | Enforcement levels, status and baseline hand-off | Traceability | [x] Done 2026-11-28 |
 | 13 | Traceability exceptions | Traceability | [ ] Not started |
 | 14 | Cross-project traceability | Traceability | [ ] Not started |
 | 15 | Matrices, coverage + Traceability MCP tools | Traceability | [ ] Not started |
@@ -884,7 +884,7 @@ conditional on a sub-type of a record in an ancestor project.
 - Not built here, by design: the screens and the hierarchy view (Phase 16), MCP tools (Phase 15), status and the baseline check (Phase 12), the docs website page (Phase 17), the scaling probe and perf scenario for evaluation (Phase 18).
 - Tests: `tests/test_traceability_rule_tree.py`, `tests/test_traceability_rules.py` (module test directory); the template-keys test is extended.
 
-## Phase 12 — Enforcement levels, status and baseline hand-off
+## Phase 12 — Enforcement levels, status and baseline hand-off (done 2026-11-28)
 
 **Scope** (§20–21): Informational / Warning / Required; a computed per-record traceability
 status (per-required-relationship checkmarks); a check provider registered with
@@ -900,6 +900,26 @@ show a record whose verification or validation links are all *carried over* as "
 inherited", not as verified (the same rule as an approved waiver in Phase 13). The link carries a
 note naming the source record; the status reads it through a generic link field, never a
 requirement-specific case.
+
+**Built (account in `docs/decisions.md`, "Module 7 Phase 12"; contract in `docs/modules.md` §4l17):**
+
+- **Approvals as well as baselines (Decided by: User).** The baseline policy gained `approval_checks`: `off` (default),
+  `manual`, `automated`, `manual_and_automated` (column in unreleased migration `0210`, edited in place: a local database
+  that already ran it needs a reset). Core `services/baseline.check_record_approval`, run by
+  `approval_separation.enforce_approval`; the edit-to-Approved path and the change request decision check the record after
+  the change; the review-deadline sweep passes `automated`.
+- **Opt-in enforcement (Decided by: User).** The `traceability:traceability_rules` check (`baseline_checks`); Required rules
+  report `enforced_at` or `not_enforced_reason`.
+- **Status.** `status.py`, `GET .../status/{type}[/{id}]`; `rule_evaluation` counts confirmed links, so a leaf, a rule and a
+  record can be `inherited`.
+- **Confirm link (Decided by: User).** Core `POST .../links/{link_id}/confirm`, in the Links panel and the requirement's
+  Actions card (`link_id`, `link_note` on the requirement's action list).
+- **Health.** Readiness runs the approval checks; an on-change snapshot is stale after a link or rule change.
+- Not built here, by design: the status and rule screens (Phase 16), MCP rule and status tools (Phase 15), exceptions
+  (Phase 13, which adds an `excepted` state), the docs website rule pages (Phase 17), the scaling probe and perf scenarios
+  (Phase 18).
+- Tests: `modules/traceability/tests/test_traceability_status.py`; stories for the policy fields, Links panel and
+  activity; Playwright `traceability-enforcement.spec.ts`.
 
 ## Phase 13 — Traceability exceptions (`traceability_exceptions`)
 
@@ -1000,7 +1020,10 @@ tooling and its rules are `perf/README.md` and `docs/performance.md`; this phase
   findings register with its guard and fixed in this phase. Known starting points: the baseline checks capture every record's
   content to learn its id (about 3 ms a record, measured in Phase 6; an ids-only capture on the snapshot provider contract,
   with each module's provider updated, makes the checks flat and lifts the on-demand Health guidance), and the rule-status
-  read per list page, which must read links and leaf results in bulk, never per record.
+  read per list page, which must read links and leaf results in bulk, never per record. Also: the required-fields check
+  reads a type's whole list through its record table even when it judges one record's approval (Phase 12 made it run at
+  approval), so approving one record costs in proportion to the project's size, and a bulk approval repeats it; a record
+  table read narrowed to ids is the fix, measured here.
 - **Settle the guidance.** Re-set `health.ON_DEMAND_GUIDANCE_RECORDS` from the measured figure, and state the figure and its
   commit in `docs/decisions.md`.
 - **Docs:** `docs/performance.md` and `docs/website/docs/reference/performance-testing-method.md` /

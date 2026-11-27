@@ -79,7 +79,7 @@ CORE_ACTION_KINDS: dict[str, str] = {
                      "requirement_unlinked", "action_linked", "action_unlinked", "evidence_linked", "evidence_unlinked",
                      "file_attached", "file_linked", "file_unlinked", "comment_file_attached", "comment_file_removed",
                      "link_type_changed", "represents_added", "represents_removed", "policy_links_changed",
-                     "reference_added", "reference_updated", "reference_removed"), LINKS),
+                     "reference_added", "reference_updated", "reference_removed", "link_confirmed"), LINKS),
     **dict.fromkeys(
         ("tagged", "untagged", "placed", "unplaced", "alias_added", "alias_retired", "alias_promoted", "alias_made_independent"),
         TAGS,

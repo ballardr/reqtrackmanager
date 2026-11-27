@@ -42,9 +42,10 @@ def _project_url(project_id, suffix="/baseline-policy") -> str:
     return PROJECT.format(project=project_id) + suffix
 
 
-def _settings(checks=(), fields=(), stage=True, manual=False, notify=True) -> dict:
+def _settings(checks=(), fields=(), stage=True, manual=False, notify=True, approvals="off") -> dict:
     return {
-        "applies_to_stage": stage, "applies_to_manual": manual, "notify_managers": notify, "checks": list(checks),
+        "applies_to_stage": stage, "applies_to_manual": manual, "approval_checks": approvals, "notify_managers": notify,
+        "checks": list(checks),
         "required_fields": list(fields),
     }
 
@@ -185,13 +186,14 @@ def test_only_a_holder_of_the_project_atom_sets_or_previews_a_projects_policy_an
     assert client.put(_project_url(project["id"]), json={"settings": None}, headers=auth_headers(admin_token)).status_code == 404
 
 
-def test_the_policy_offers_the_two_checks_and_the_types_a_baseline_can_hold(client, admin_token):
+def test_the_policy_offers_the_modules_checks_and_the_types_a_baseline_can_hold(client, admin_token):
     org, project, token = _world(client, admin_token, "Baseline Options Org")
     profile = _create(client, token, org["id"], "Regulated")
     out = client.get(_profile_url(org["id"], profile["id"]), headers=auth_headers(token)).json()
     assert out["settings"] == _settings()
     assert [(o["key"], o["name"], o["module_key"], o["artefact_types"]) for o in out["check_options"]] == [
         (FIELDS, "Required fields", "traceability", []), (APPROVALS, "Required approvals", "traceability", ["requirement"]),
+        ("traceability:traceability_rules", "Traceability rules", "traceability", []),
     ]
     assert [(t["artefact_type"], t["label"]) for t in out["types"]] == [("requirement", "Requirement")]
     fields = _policy(client, token, project["id"])["field_options"]["requirement"]
@@ -246,8 +248,8 @@ def test_every_change_writes_one_audit_event_with_keys_only(client, admin_token)
     events = [e for e in _audit("governance_profile", profile["id"]) if e.action == "baseline_updated"]
     assert len(events) == 1
     assert events[0].detail == {
-        "applies_to_stage": True, "applies_to_manual": True, "notify_managers": True, "checks": [FIELDS],
-        "required_fields": {"requirement": ["description"]},
+        "applies_to_stage": True, "applies_to_manual": True, "approval_checks": "off", "notify_managers": True,
+        "checks": [FIELDS], "required_fields": {"requirement": ["description"]},
     }
     _set_project(client, token, project["id"], _settings(checks=[APPROVALS]))
     project_events = _audit("governance_baseline_policy", project["id"])
@@ -486,7 +488,8 @@ def test_a_projects_own_policy_travels_in_its_bundle(client, admin_token):
     assert exported.status_code == 200, exported.text
     data = json.loads(zipfile.ZipFile(io.BytesIO(exported.content)).read("project.json"))
     assert data[bundle.BASELINE_POLICY_KEY] == {
-        "applies_to_stage": True, "applies_to_manual": True, "notify_managers": True, "checks": [APPROVALS, FIELDS],
+        "applies_to_stage": True, "applies_to_manual": True, "approval_checks": "off", "notify_managers": True,
+        "checks": [APPROVALS, FIELDS],
         "required_fields": [{"artefact_type": "requirement", "fields": ["description"]}],
     }
     imported = client.post(
@@ -534,8 +537,8 @@ def test_a_project_import_leaves_out_what_the_organisation_cannot_use_and_says_s
         db.rollback()
     # A policy naming neither baseline kind takes the default (stage baselines).
     assert stored == {
-        "applies_to_stage": True, "applies_to_manual": False, "notify_managers": True, "checks": [FIELDS],
-        "required_fields": [{"artefact_type": "requirement", "fields": ["description"]}],
+        "applies_to_stage": True, "applies_to_manual": False, "approval_checks": "off", "notify_managers": True,
+        "checks": [FIELDS], "required_fields": [{"artefact_type": "requirement", "fields": ["description"]}],
     }
 
 

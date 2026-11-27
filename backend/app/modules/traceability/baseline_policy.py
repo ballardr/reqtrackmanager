@@ -20,8 +20,10 @@ Design decisions:
   and its required fields as child rows, not one row per record type.
 - A policy only tightens: the checks and fields of every source are merged by union, so a profile, a project and an
   ancestor can each ask for more and none can take away what another asked. Each source's checks keep the baseline kinds
-  that source chose (`applies_to_stage`, `applies_to_manual`), so a profile's stage check never starts to run before a
-  manual baseline because a project asked for another check there.
+  and approvals that source chose (`applies_to_stage`, `applies_to_manual`, `approval_checks`), so a profile's stage
+  check never starts to run before a manual baseline because a project asked for another check there.
+- A stage baseline is checked by the stage setting however the stage was moved; the automated approval setting adds the
+  review deadline's approval for a source that checks no other stage baseline, and never removes the stage setting.
 - Which profiles apply is `profile_resolution`'s decision; this file reads their row. An exempt or opted-out project
   therefore does not get a profile's checks.
 - A project's own row beats the nearest ancestor's, so a child project can follow its parent (no row) or set its own. A row
@@ -54,6 +56,7 @@ from sqlalchemy.orm import Session
 from app.models.project import Project
 from app.modules import registry
 from app.modules.seams import BaselinePolicy
+from app.modules.traceability.enums import ApprovalCheckMode
 from app.modules.traceability.models import (
     GovernanceBaselineCheck,
     GovernanceBaselinePolicy,
@@ -72,7 +75,7 @@ KIND_BASELINE = "baseline"
 PROJECT_ROW_KEY = "governance_baseline_policy"
 FIELD_KEY_MAX_LENGTH = 100
 
-BaselineKindName = Literal["stage", "manual"]
+BaselineKindName = Literal["stage", "manual", "approval"]
 #: The column kinds that can be blank, so a required field makes sense for them (a flag is never blank and an instant is
 #: set by the system).
 _FILLABLE_KINDS = frozenset({"text", "enum", "principal", "date", "number", "list"})
@@ -98,6 +101,7 @@ class BaselineSettings:
     Attributes:
         applies_to_stage: Whether the checks run before a stage baseline.
         applies_to_manual: Whether the checks run before a manual baseline.
+        approval_checks: Which approvals the checks also run before.
         checks: The enabled namespaced check keys, sorted.
         required_fields: The fields the required-fields check demands, sorted.
         notify_managers: Whether the project's managers are told when a check refuses the automatic approval of a stage.
@@ -108,21 +112,36 @@ class BaselineSettings:
     checks: tuple[str, ...] = ()
     required_fields: tuple[RequiredField, ...] = ()
     notify_managers: bool = True
+    approval_checks: ApprovalCheckMode = ApprovalCheckMode.OFF
 
     @property
     def is_empty(self) -> bool:
         """Whether the policy enables no check and names no field."""
         return not self.checks and not self.required_fields
 
-    def applies_to(self, kind: BaselineKindName) -> bool:
-        """Whether the checks run before a baseline of `kind`."""
-        return self.applies_to_stage if kind == "stage" else self.applies_to_manual
+    def applies_to(self, kind: BaselineKindName, *, automated: bool = False) -> bool:
+        """Whether the checks run before a baseline of `kind` or a person's approval (`approval`); `automated` marks a stage
+        baseline taken by the review deadline."""
+        if kind == "approval":
+            return self.approval_checks.manual
+        if kind == "manual":
+            return self.applies_to_manual
+        return self.applies_to_stage or (automated and self.approval_checks.automated)
+
+    @property
+    def kinds(self) -> set[str]:
+        """The names of what the checks run before: `stage`, `manual`, `manual_approval`, `automated_approval`."""
+        chosen = (
+            ("stage", self.applies_to_stage), ("manual", self.applies_to_manual),
+            ("manual_approval", self.approval_checks.manual), ("automated_approval", self.approval_checks.automated),
+        )
+        return {name for name, on in chosen if on}
 
     def normalised(self) -> BaselineSettings:
         """The settings with checks and fields de-duplicated and sorted."""
         return BaselineSettings(
             self.applies_to_stage, self.applies_to_manual, tuple(sorted(set(self.checks))),
-            tuple(sorted(set(self.required_fields))), self.notify_managers,
+            tuple(sorted(set(self.required_fields))), self.notify_managers, self.approval_checks,
         )
 
 
@@ -181,6 +200,8 @@ class EffectiveCheck:
         available: Whether the check is registered and in effect for the project, so it runs.
         stage: Whether it runs before a stage baseline.
         manual: Whether it runs before a manual baseline.
+        manual_approval: Whether it runs when a person approves a record.
+        automated_approval: Whether it runs when the review deadline approves a stage.
         sources: Profile names, then `"project"` or `"parent_project"`, that enable it.
     """
 
@@ -190,6 +211,8 @@ class EffectiveCheck:
     stage: bool
     manual: bool
     sources: tuple[str, ...]
+    manual_approval: bool = False
+    automated_approval: bool = False
 
 
 @dataclass(frozen=True)
@@ -200,6 +223,8 @@ class EffectiveField:
         field: The record type and column key.
         stage: Whether it is demanded before a stage baseline.
         manual: Whether it is demanded before a manual baseline.
+        manual_approval: Whether it is demanded when a person approves a record.
+        automated_approval: Whether it is demanded when the review deadline approves a stage.
         sources: Profile names, then `"project"` or `"parent_project"`, that name it.
     """
 
@@ -207,6 +232,8 @@ class EffectiveField:
     stage: bool
     manual: bool
     sources: tuple[str, ...]
+    manual_approval: bool = False
+    automated_approval: bool = False
 
 
 @dataclass(frozen=True)
@@ -283,12 +310,12 @@ def _validated(
     """`settings` normalised, after checking the baseline kinds, the checks, the types and the field keys.
 
     Raises:
-        HTTPException: 422 when neither baseline kind is chosen, a check is not available to the organisation, a type is
+        HTTPException: 422 when no baseline kind and no approval is chosen, a check is not available to the organisation, a type is
             not one a baseline can hold, a field key is empty or too long, or (for a project) a field is not a column of
             the type.
     """
-    if not (settings.applies_to_stage or settings.applies_to_manual):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Choose stage baselines, manual baselines or both.")
+    if not settings.kinds:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Choose at least one kind of baseline or approval for the checks.")
     offered = {o.key for o in check_options(db, organization_id)}
     for key in settings.checks:
         if key not in offered:
@@ -335,14 +362,16 @@ def _write(
         policy = GovernanceBaselinePolicy(
             profile_id=profile_id, project_id=project_id, applies_to_stage=settings.applies_to_stage,
             applies_to_manual=settings.applies_to_manual, notify_managers=settings.notify_managers,
+            approval_checks=settings.approval_checks.value,
         )
         db.add(policy)
         db.flush()
-    elif (policy.applies_to_stage, policy.applies_to_manual, policy.notify_managers) != (
-        settings.applies_to_stage, settings.applies_to_manual, settings.notify_managers,
+    elif (policy.applies_to_stage, policy.applies_to_manual, policy.notify_managers, policy.approval_checks) != (
+        settings.applies_to_stage, settings.applies_to_manual, settings.notify_managers, settings.approval_checks.value,
     ):
         policy.applies_to_stage, policy.applies_to_manual = settings.applies_to_stage, settings.applies_to_manual
         policy.notify_managers = settings.notify_managers
+        policy.approval_checks = settings.approval_checks.value
         changed = True
     checks = {r.check_key: r for r in db.scalars(select(GovernanceBaselineCheck).where(GovernanceBaselineCheck.policy_id == policy.id))}
     for key, row in checks.items():
@@ -378,6 +407,7 @@ def _detail(settings: BaselineSettings | None) -> dict[str, Any]:
         by_type[field.artefact_type].append(field.field_key)
     return {
         "applies_to_stage": settings.applies_to_stage, "applies_to_manual": settings.applies_to_manual,
+        "approval_checks": settings.approval_checks.value,
         "notify_managers": settings.notify_managers, "checks": list(settings.checks), "required_fields": dict(by_type),
     }
 
@@ -450,6 +480,7 @@ def _settings_by_policy(db: Session, policies: Sequence[GovernanceBaselinePolicy
     return {
         p.id: BaselineSettings(
             p.applies_to_stage, p.applies_to_manual, tuple(checks[p.id]), tuple(fields[p.id]), p.notify_managers,
+            ApprovalCheckMode(p.approval_checks),
         ).normalised()
         for p in policies
     }
@@ -488,7 +519,8 @@ def _sources(
 
 
 def resolve_project_policy(db: Session, project_id: uuid.UUID) -> BaselinePolicy | None:
-    """`PolicyResolver.resolve_project` for `GovernanceSeam.BASELINE`: the checks that run before each baseline kind.
+    """`PolicyResolver.resolve_project` for `GovernanceSeam.BASELINE`: the checks that run before each baseline kind and
+    approval.
 
     Args:
         db: Active session (read only).
@@ -496,17 +528,23 @@ def resolve_project_policy(db: Session, project_id: uuid.UUID) -> BaselinePolicy
 
     Returns:
         The union of the checks of the profiles that apply and of the project's own row (else the nearest ancestor's), each
-        with the baseline kinds its source chose, and whether any source asks for managers to be notified of a refused
-        automatic approval; `None` when there are no checks, so no check runs.
+        with the baselines and approvals its source chose, and whether any source asks for managers to be notified of a
+        refused automatic approval; `None` when there are no checks, so no check runs.
     """
     sources, _, _ = _sources(db, project_id, get_project_chain_ids(db, project_id))
-    stage = {key for _, s in sources if s.applies_to_stage for key in s.checks}
-    manual = {key for _, s in sources if s.applies_to_manual for key in s.checks}
-    if not stage and not manual:
+    by_kind: dict[str, set[str]] = defaultdict(set)
+    for _, settings in sources:
+        for kind in settings.kinds:
+            by_kind[kind] |= set(settings.checks)
+    if not any(by_kind.values()):
         return None
+
+    def keys(kind: str) -> tuple[str, ...]:
+        return tuple(sorted(by_kind[kind]))
+
     return BaselinePolicy(
-        stage_checks=tuple(sorted(stage)), manual_checks=tuple(sorted(manual)),
-        notify_managers=_notifies(sources),
+        stage_checks=keys("stage"), manual_checks=keys("manual"), manual_approval_checks=keys("manual_approval"),
+        automated_approval_checks=keys("automated_approval"), notify_managers=_notifies(sources),
     )
 
 
@@ -517,13 +555,16 @@ def _notifies(sources: Sequence[tuple[str, BaselineSettings]]) -> bool:
     return any(s.notify_managers for s in holders) if holders else True
 
 
-def required_fields(db: Session, project_id: uuid.UUID, kind: BaselineKindName) -> dict[str, tuple[str, ...]]:
-    """The fields the required-fields check demands before a baseline of `kind`.
+def required_fields(
+    db: Session, project_id: uuid.UUID, kind: BaselineKindName, *, automated: bool = False,
+) -> dict[str, tuple[str, ...]]:
+    """The fields the required-fields check demands before a baseline of `kind` or an approval (`approval`).
 
     Args:
         db: Active session (read only).
         project_id: The project.
-        kind: `stage` or `manual`.
+        kind: `stage`, `manual` or `approval`.
+        automated: A stage baseline taken by the review deadline.
 
     Returns:
         `{record type: field keys}`: the union over every source that applies to `kind`; empty when none names a field.
@@ -531,7 +572,7 @@ def required_fields(db: Session, project_id: uuid.UUID, kind: BaselineKindName) 
     sources, _, _ = _sources(db, project_id, get_project_chain_ids(db, project_id))
     found: dict[str, set[str]] = defaultdict(set)
     for _, settings in sources:
-        if settings.applies_to(kind):
+        if settings.applies_to(kind, automated=automated):
             for field in settings.required_fields:
                 found[field.artefact_type].add(field.field_key)
     return {t: tuple(sorted(keys)) for t, keys in found.items()}
@@ -563,7 +604,7 @@ def project_policy(db: Session, project: Project) -> ProjectBaselinePolicy:
     field_sources: dict[RequiredField, list[str]] = defaultdict(list)
     field_kinds: dict[RequiredField, set[str]] = defaultdict(set)
     for source, settings in sources:
-        kinds = {k for k, on in (("stage", settings.applies_to_stage), ("manual", settings.applies_to_manual)) if on}
+        kinds = settings.kinds
         for key in settings.checks:
             check_sources[key].append(source)
             check_kinds[key] |= kinds
@@ -575,11 +616,17 @@ def project_policy(db: Session, project: Project) -> ProjectBaselinePolicy:
         own=own,
         inherited_from=None if ancestor is None else _project_names(db, [ancestor]).get(ancestor),
         checks=[
-            EffectiveCheck(key, names.get(key), key in running, "stage" in check_kinds[key], "manual" in check_kinds[key], tuple(check_sources[key]))
+            EffectiveCheck(
+                key, names.get(key), key in running, "stage" in check_kinds[key], "manual" in check_kinds[key],
+                tuple(check_sources[key]), "manual_approval" in check_kinds[key], "automated_approval" in check_kinds[key],
+            )
             for key in sorted(check_sources)
         ],
         required_fields=[
-            EffectiveField(f, "stage" in field_kinds[f], "manual" in field_kinds[f], tuple(field_sources[f]))
+            EffectiveField(
+                f, "stage" in field_kinds[f], "manual" in field_kinds[f], tuple(field_sources[f]),
+                "manual_approval" in field_kinds[f], "automated_approval" in field_kinds[f],
+            )
             for f in sorted(field_sources)
         ],
     )
@@ -613,6 +660,7 @@ def _entry(settings: BaselineSettings) -> dict[str, Any]:
         by_type[field.artefact_type].append(field.field_key)
     return {
         "applies_to_stage": settings.applies_to_stage, "applies_to_manual": settings.applies_to_manual,
+        "approval_checks": settings.approval_checks.value,
         "notify_managers": settings.notify_managers, "checks": list(settings.checks),
         "required_fields": [{"artefact_type": t, "fields": keys} for t, keys in sorted(by_type.items())],
     }
@@ -631,7 +679,7 @@ def _import_settings(
 ) -> BaselineSettings:
     """The bundle entry's settings resolved here. A check no installed module registers, a type a baseline cannot hold and
     (for a project) a field the type has no column for are reported through `warn` and left out; a policy that names
-    neither baseline kind takes the default (stage baselines). A check or type of a module that is installed but not yet
+    no baseline kind and no approval takes the default (stage baselines). A check or type of a module that is installed but not yet
     switched on for the organisation is kept, as stored data is whenever its module is off.
     """
     registered = {f"{module_key}:{provider.key}" for module_key, provider in registry.get_baseline_check_providers()}
@@ -657,9 +705,15 @@ def _import_settings(
             else:
                 fields.append(RequiredField(artefact_type, text))
     stage, manual = bool(entry.get("applies_to_stage", True)), bool(entry.get("applies_to_manual", False))
-    if not (stage or manual):
+    approvals = str(entry.get("approval_checks") or ApprovalCheckMode.OFF.value)
+    if approvals not in {m.value for m in ApprovalCheckMode}:
+        warn(f"The approval check setting {approvals[:40]!r} is not recognised; approvals are not checked by this policy.")
+        approvals = ApprovalCheckMode.OFF.value
+    if not (stage or manual or approvals != ApprovalCheckMode.OFF.value):
         stage = True
-    return BaselineSettings(stage, manual, tuple(checks), tuple(fields), bool(entry.get("notify_managers", True))).normalised()
+    return BaselineSettings(
+        stage, manual, tuple(checks), tuple(fields), bool(entry.get("notify_managers", True)), ApprovalCheckMode(approvals),
+    ).normalised()
 
 
 def import_rows(db: Session, profile_id: uuid.UUID, rows: Sequence[dict[str, Any]], warn: Callable[[str], None]) -> None:

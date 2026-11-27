@@ -63,7 +63,13 @@ _REVIEW_SETTINGS = [
 ]
 _BASELINE_SETTINGS = [
     _body("applies_to_stage", "boolean", "Run the checks before a stage baseline (default true)."),
-    _body("applies_to_manual", "boolean", "Run the checks before a manual baseline (default false). At least one of the two is true."),
+    _body("applies_to_manual", "boolean", "Run the checks before a manual baseline (default false)."),
+    _body(
+        "approval_checks", "string",
+        "Which approvals the checks also run before: off (default), manual (a person approving one record), automated (a "
+        "stage approved because its review deadline passed) or manual_and_automated. At least one baseline kind or approval "
+        "is chosen.",
+    ),
     _body("notify_managers", "boolean", "Tell the project's managers when a check refuses a stage's automatic approval (default true)."),
     _body("checks", "array", "Namespaced check keys to run, from the read's `check_options` (for example `traceability:required_fields`)."),
     _body("required_fields", "array", 'Fields the required-fields check demands: `[{"artefact_type": ..., "field_key": ...}]`.'),
@@ -186,7 +192,8 @@ def build_mcp_tools() -> tuple[McpToolDefinition, ...]:
                 _PROJECT_ID,
                 _body(
                     "settings", "object",
-                    "`{applies_to_stage, applies_to_manual, notify_managers, checks[], required_fields[]}`; null follows the ancestor.",
+                    "`{applies_to_stage, applies_to_manual, approval_checks, "
+                    "notify_managers, checks[], required_fields[]}`; null follows the ancestor.",
                 ),
             ],
         ),

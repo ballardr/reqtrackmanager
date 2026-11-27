@@ -504,13 +504,14 @@ def move_touches_locked_phase(db: Session, current_phase_id: uuid.UUID, target: 
 def move_stage(
     db: Session, project: Project, stage: ProjectStage, phase: StageWorkflowPhase, actor: User, *,
     actor_roles: frozenset[ProjectRole] | set[ProjectRole], cascade_to_requirements: bool = False,
-    reason: str | None = None,
+    reason: str | None = None, automated: bool = False,
 ) -> None:
     """Moves a stage to another phase of its own workflow and applies the new kind's behaviour.
 
     Entering a locked phase writes the baseline and records the approval; entering a closed phase records
     completion (and cascades to approved requirements if asked); leaving them clears the record. Entering or
-    leaving a locked phase needs the project manager role. Flushed, not committed.
+    leaving a locked phase needs the project manager role. Flushed, not committed. `automated` marks the review
+    deadline approving the stage, so the baseline also runs the automated approval checks.
 
     Raises:
         ValueError: `phase` is not in the stage's workflow.
@@ -519,13 +520,14 @@ def move_stage(
     """
     apply_phase_move(
         db, project, stage, stage, phase, actor, can_lock=may_lock_phases(db, actor, project, actor_roles),
-        cascade_to_requirements=cascade_to_requirements, reason=reason,
+        cascade_to_requirements=cascade_to_requirements, reason=reason, automated=automated,
     )
 
 
 def apply_phase_move(
     db: Session, project: Project, stage: ProjectStage, holder: PhaseHolder, phase: StageWorkflowPhase, actor: User, *,
     can_lock: bool, cascade_to_requirements: bool = False, reason: str | None = None, component_id: uuid.UUID | None = None,
+    automated: bool = False,
 ) -> None:
     """Moves `holder` (the stage itself, or one component's state within it) to another phase of its workflow.
 
@@ -539,6 +541,7 @@ def apply_phase_move(
         can_lock: Whether the actor may enter or leave a locked phase (a project manager, or for a component the
             track's owner).
         component_id: Set when `holder` is a component state.
+        automated: The review deadline is moving the holder, not a person.
 
     Raises:
         ValueError: `phase` is not in the holder's workflow.
@@ -589,7 +592,7 @@ def apply_phase_move(
     if phase.kind == StagePhaseKind.LOCKED:
         holder.approved_at = datetime.now(UTC)
         holder.approved_by = actor.id
-        create_baseline_for_stage(db, project, stage, actor, component_id=component_id)
+        create_baseline_for_stage(db, project, stage, actor, component_id=component_id, automated=automated)
         log_event(db, entity_type=entity_type, entity_id=entity_id, action="approved", actor_id=actor.id,
                   project_id=project.id, detail=detail)
     elif phase.kind == StagePhaseKind.CLOSED:

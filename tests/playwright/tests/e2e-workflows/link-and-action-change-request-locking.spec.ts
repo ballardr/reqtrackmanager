@@ -42,13 +42,17 @@ test.describe("action/link change-request locking", () => {
       return body.id;
     }
 
+    // Through the API: creating a requirement is not what this scenario tests, and doing it in the UI spends the time
+    // the locked-record steps need.
     await test.step("create three throwaway requirements", async () => {
+      const headers = { Authorization: `Bearer ${await page.evaluate(() => localStorage.getItem("reqtrack_token"))}` };
+      const base = `http://localhost:8000/api/v1/projects/${projectId}`;
+      const [category] = await (await page.request.get(`${base}/categories`, { headers })).json();
       for (const name of [reqAName, reqBName, reqCName]) {
-        await page.getByRole("button", { name: "New Requirement" }).click();
-        const createPanel = page.getByRole("dialog", { name: "New Requirement" });
-        await createPanel.getByPlaceholder("Name", { exact: true }).fill(name);
-        await createPanel.getByRole("button", { name: "Create", exact: true }).click();
-        await expect(createPanel).not.toBeVisible();
+        const created = await page.request.post(`${base}/requirements`, {
+          headers, data: { name, component_id: category.component_id, category_id: category.id },
+        });
+        expect(created.status(), await created.text()).toBe(201);
       }
     });
 

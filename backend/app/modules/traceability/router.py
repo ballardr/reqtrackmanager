@@ -467,7 +467,7 @@ def baseline_settings_out(settings: baseline_policy.BaselineSettings) -> Baselin
     """Baseline settings as the API shape."""
     return BaselineSettingsOut(
         applies_to_stage=settings.applies_to_stage, applies_to_manual=settings.applies_to_manual,
-        notify_managers=settings.notify_managers, checks=list(settings.checks),
+        approval_checks=settings.approval_checks, notify_managers=settings.notify_managers, checks=list(settings.checks),
         required_fields=[RequiredFieldIn(artefact_type=f.artefact_type, field_key=f.field_key) for f in settings.required_fields],
     )
 
@@ -519,7 +519,7 @@ def set_profile_baseline(
         settings=baseline_policy.BaselineSettings(
             payload.applies_to_stage, payload.applies_to_manual, tuple(payload.checks),
             tuple(baseline_policy.RequiredField(f.artefact_type, f.field_key) for f in payload.required_fields),
-            payload.notify_managers,
+            payload.notify_managers, payload.approval_checks,
         ),
     )
     db.commit()

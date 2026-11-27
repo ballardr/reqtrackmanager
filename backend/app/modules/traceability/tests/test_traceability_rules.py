@@ -21,6 +21,7 @@ from app.models.project import Project
 from app.modules import registry
 from app.modules.seams import RuleConditionField
 from app.modules.traceability import bundle, rule_evaluation, rule_tree, rules
+from app.modules.traceability.enums import TraceabilityState
 from app.modules.traceability.models import GovernanceProfile, GovernanceTraceabilityRule
 from app.modules.traceability.tests.test_governance_profiles import _choose, _create, _enable, _exempt, _fake_definition
 from app.services import definition_suppression
@@ -482,8 +483,8 @@ def test_a_rule_counts_the_records_it_applies_to_and_those_that_meet_it(client, 
         "Any link", subtype="Project Requirement", requires=_leaf(subtype="Stakeholder Requirement"),
     ))
     assert scenario.evaluation(any_link) == {
-        "source_total": 3, "in_scope": 3, "satisfied": 2, "unsatisfied": 1, "problems": [],
-        "leaves": [{"path": "", "label": "Links to Requirement (Stakeholder Requirement)", "met": 2, "unmet": 1}],
+        "source_total": 3, "in_scope": 3, "satisfied": 2, "inherited": 0, "unsatisfied": 1, "problems": [],
+        "leaves": [{"path": "", "label": "Links to Requirement (Stakeholder Requirement)", "met": 2, "inherited": 0, "unmet": 1}],
     }
     derives_only = _add_rule(client, token, pid, _body(
         "Derives only", subtype="Project Requirement",
@@ -592,7 +593,7 @@ def test_an_evaluation_is_counts_only(client, admin_token):
     token, pid = scenario.world.token, scenario.project["id"]
     rule = _add_rule(client, token, pid)
     result = scenario.evaluation(rule)
-    assert set(result) == {"source_total", "in_scope", "satisfied", "unsatisfied", "leaves", "problems"}
+    assert set(result) == {"source_total", "in_scope", "satisfied", "inherited", "unsatisfied", "leaves", "problems"}
     assert "P1" not in json.dumps(result)
     member = _member(client, token, scenario.world.org["id"], pid, "stakeholder")
     assert client.get(_project_url(pid, f"/{rule['id']}/evaluation"), headers=auth_headers(member)).status_code == 200
@@ -629,9 +630,9 @@ def test_a_condition_may_test_a_record_in_an_ancestor_project_through_a_cross_pr
                 requires=requires, include_cross_project=cross,
             )
 
-        assert evaluate(False).satisfied_count == 0
+        assert evaluate(False).count(TraceabilityState.MET) == 0
         crossed = evaluate(True)
-        assert (crossed.source_total, len(crossed.in_scope), crossed.satisfied_count) == (2, 2, 1)
+        assert (crossed.source_total, len(crossed.in_scope), crossed.count(TraceabilityState.MET)) == (2, 2, 1)
     finally:
         db.close()
 

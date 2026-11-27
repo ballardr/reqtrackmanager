@@ -295,10 +295,21 @@ export interface RequiredField {
   field_key: string;
 }
 
+/** Which approvals a baseline policy's checks also run before. */
+export type ApprovalCheckMode = "off" | "manual" | "automated" | "manual_and_automated";
+
+export const APPROVAL_CHECK_LABEL: Record<ApprovalCheckMode, string> = {
+  off: "Off",
+  manual: "Manual approvals only",
+  automated: "Automated approvals only",
+  manual_and_automated: "Manual and automated approvals",
+};
+
 /** The baseline policy one owner (a profile or a project) gives. */
 export interface BaselineSettings {
   applies_to_stage: boolean;
   applies_to_manual: boolean;
+  approval_checks: ApprovalCheckMode;
   notify_managers: boolean;
   checks: string[];
   required_fields: RequiredField[];
@@ -339,6 +350,8 @@ export interface EffectiveBaselineCheck {
   available: boolean;
   stage: boolean;
   manual: boolean;
+  manual_approval: boolean;
+  automated_approval: boolean;
   sources: string[];
 }
 
@@ -348,6 +361,8 @@ export interface EffectiveBaselineField {
   field_label: string | null;
   stage: boolean;
   manual: boolean;
+  manual_approval: boolean;
+  automated_approval: boolean;
   sources: string[];
 }
 

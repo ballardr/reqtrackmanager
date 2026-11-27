@@ -191,6 +191,8 @@ RECORD_CODE_PATTERN = re.compile(rf"[A-Z]{{{RECORD_PREFIX_MIN_LENGTH},{RECORD_PR
 # a record code (`ISO-27001 v2.0 · A.5.15 ...`); it is never split.
 _CLAUSE_LABEL = re.compile(r"\S+\s+v[\w.]+\s+·\s")
 _LABEL_CODE = re.compile(rf"({RECORD_CODE_PATTERN.pattern})\s+(?=\S)")
+# A requirement's code is built from its component and category prefixes (`COMP-CAT-001`).
+_LEADING_CODE = re.compile(r"(\S+-\d{3,})\s+(?=\S)")
 _RECORD_PREFIX = re.compile(rf"[A-Z]{{{RECORD_PREFIX_MIN_LENGTH},{RECORD_PREFIX_MAX_LENGTH}}}")
 
 
@@ -222,3 +224,10 @@ def split_record_label(label: str) -> tuple[str | None, str]:
     if match is None or _CLAUSE_LABEL.match(label) is not None:
         return None, label
     return match.group(1), label[match.end():]
+
+
+def leading_code(label: str) -> str | None:
+    """The code a record's summary label starts with, a composite requirement code included, or `None` for a label
+    with none (a compliance clause label among them)."""
+    match = _LEADING_CODE.match(label)
+    return None if match is None or _CLAUSE_LABEL.match(label) is not None else match.group(1)

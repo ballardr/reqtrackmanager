@@ -194,11 +194,13 @@ def upgrade() -> None:
             project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
             applies_to_stage BOOLEAN NOT NULL,
             applies_to_manual BOOLEAN NOT NULL,
+            approval_checks VARCHAR(24) NOT NULL DEFAULT 'off',
             notify_managers BOOLEAN NOT NULL DEFAULT TRUE,
             created_at TIMESTAMPTZ NOT NULL,
             updated_at TIMESTAMPTZ NOT NULL,
             CONSTRAINT ck_governance_baseline_policies_one_owner CHECK ((profile_id IS NULL) <> (project_id IS NULL)),
-            CONSTRAINT ck_governance_baseline_policies_applies CHECK (applies_to_stage OR applies_to_manual),
+            CONSTRAINT ck_governance_baseline_policies_applies
+                CHECK (applies_to_stage OR applies_to_manual OR approval_checks <> 'off'),
             CONSTRAINT uq_governance_baseline_policies_profile UNIQUE (profile_id),
             CONSTRAINT uq_governance_baseline_policies_project UNIQUE (project_id)
         )

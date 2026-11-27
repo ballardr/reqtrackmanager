@@ -74,6 +74,18 @@ class RequirementActionOut(ProjectScopedRow):
     comment_count: int = 0
 
 
+class LinkedRequirementActionOut(RequirementActionOut):
+    """An action as one requirement lists it, with the link that joins them.
+
+    Attributes:
+        link_id: The link between the action and the requirement.
+        link_note: Why the link exists when it was not authored directly (a carried-over link), else `null`.
+    """
+
+    link_id: UUID
+    link_note: str | None = None
+
+
 class RequirementActionLinkCreate(BaseModel):
     """Links an existing action to the requirement in the URL path."""
 

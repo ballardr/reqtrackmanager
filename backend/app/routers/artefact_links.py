@@ -44,6 +44,7 @@ from app.schemas.changes import RecordActivityOut
 from app.schemas.link_graph import LinkGraphDirection, LinkGraphOut
 from app.services.link_authoring import (
     CreatedLink,
+    confirm_link_for_artefact,
     create_link_for_artefact,
     delete_link_for_artefact,
     related_project_or_404,
@@ -369,6 +370,29 @@ def _link_out(created: CreatedLink) -> ArtefactLinkOut:
             project_id=created.other.project_id,
         ),
     )
+
+
+@router.post("/{artefact_type}/{artefact_id}/links/{link_id}/confirm", status_code=status.HTTP_204_NO_CONTENT)
+def confirm_artefact_link(
+    project_id: UUID,
+    artefact_type: str,
+    artefact_id: UUID,
+    link_id: UUID,
+    current_user: User = Depends(require_project_view),
+    db: Session = Depends(get_db),
+):
+    """Confirms a carried-over link touching this artefact, removing its note (`link_authoring.confirm_link_for_artefact`).
+
+    Raises:
+        HTTPException: 404 the artefact is not visible or the link does not touch it; 403 neither `link` nor `manage`
+            held, or the default role on an approved requirement; 409 the link carries no note.
+    """
+    project = _project_or_404(db, project_id)
+    confirm_link_for_artefact(
+        db, project=project, user_id=current_user.id, artefact_type=artefact_type, artefact_id=artefact_id,
+        link_id=link_id,
+    )
+    db.commit()
 
 
 @router.delete("/{artefact_type}/{artefact_id}/links/{link_id}", status_code=status.HTTP_204_NO_CONTENT)

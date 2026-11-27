@@ -308,6 +308,7 @@ const ACTIVITY_ACTION_LABEL: Record<string, string> = {
   member_added: "added a member",
   member_removed: "removed a member",
   status_changed: "changed status",
+  link_confirmed: "confirmed a carried-over link",
   steps_skipped: "skipped steps",
   self_approved: "approved their own record",
   review_deadline_set: "set a review deadline",
@@ -1950,6 +1951,13 @@ export interface RequirementAction extends ProjectScopedRow {
   comment_count: number;
 }
 
+/** An action as one requirement lists it, with the link that joins them. */
+export interface LinkedRequirementAction extends RequirementAction {
+  link_id: string;
+  /** Why the link exists when it was not authored directly (a carried-over link). */
+  link_note: string | null;
+}
+
 export interface Comment {
   id: string;
   author_id: string;
@@ -2190,6 +2198,10 @@ export function describeActivityAction(entry: ChangeEntry, projectId?: string): 
     return `${linkVerb}: ${describeLinkedRecord(source, projectId)} → ${describeLinkedRecord(target, projectId)}${type}`;
   }
   if (entry.entity_type === "artefact_link" && entry.detail && typeof entry.detail.other_label === "string") {
+    if (entry.action === "link_confirmed") {
+      const confirmedKind = typeof entry.detail.other_type_label === "string" ? ` (${entry.detail.other_type_label})` : "";
+      return `confirmed a carried-over link with ${entry.detail.other_label}${confirmedKind}`;
+    }
     const removed = entry.action === "deleted";
     const preposition = entry.detail.direction === "incoming" ? "from" : "to";
     const kind = typeof entry.detail.other_type_label === "string" ? ` (${entry.detail.other_type_label})` : "";

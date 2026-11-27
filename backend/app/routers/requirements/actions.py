@@ -23,7 +23,12 @@ from app.models.enums import ArtefactType
 from app.models.requirement_action import RequirementAction
 from app.models.user import User
 from app.routers.requirements.core import _get_requirement_in_project, _require_edit_role
-from app.schemas.action import RequirementActionCreate, RequirementActionLinkCreate, RequirementActionOut
+from app.schemas.action import (
+    LinkedRequirementActionOut,
+    RequirementActionCreate,
+    RequirementActionLinkCreate,
+    RequirementActionOut,
+)
 from app.services.actions import (
     action_to_out,
     assignee_labels,
@@ -127,25 +132,30 @@ def create_and_link_action(
     return action_to_out(db, action)
 
 
-@router.get("/{requirement_id}/actions", response_model=list[RequirementActionOut])
+@router.get("/{requirement_id}/actions", response_model=list[LinkedRequirementActionOut])
 def list_requirement_actions(
     project_id: UUID, requirement_id: UUID,
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
-    """Lists every action linked to this requirement."""
+    """Lists every action linked to this requirement, each with the link that joins them."""
     _get_requirement_in_project(db, project_id, requirement_id)
-    action_ids = [
-        link.source_id
+    links = {
+        link.source_id: link
         for link in get_all_artefact_links(db, ArtefactType.REQUIREMENT, requirement_id)
         if link.source_type == ArtefactType.REQUIREMENT_ACTION
-    ]
-    if not action_ids:
+    }
+    if not links:
         return []
     actions = db.scalars(
-        select(RequirementAction).where(RequirementAction.id.in_(action_ids)).order_by(RequirementAction.unique_code)
+        select(RequirementAction).where(RequirementAction.id.in_(links)).order_by(RequirementAction.unique_code)
     ).all()
     labels = assignee_labels(db, actions)
-    return [action_to_out(db, a, labels=labels) for a in actions]
+    return [
+        LinkedRequirementActionOut(
+            **action_to_out(db, a, labels=labels).model_dump(), link_id=links[a.id].id, link_note=links[a.id].note,
+        )
+        for a in actions
+    ]
 
 
 @router.delete("/{requirement_id}/actions/{action_id}", status_code=status.HTTP_204_NO_CONTENT)

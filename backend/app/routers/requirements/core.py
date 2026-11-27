@@ -50,6 +50,7 @@ from app.schemas.requirement import (
 from app.services import approval_policy, approval_separation, component_stages, engagement, pubsub
 from app.services import requirement_aliases as alias_service
 from app.services.audit import log_event
+from app.services.baseline import check_record_approval
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
 from app.services.external_reference_surfaces import reference_texts
@@ -414,7 +415,7 @@ def update_requirement(
         approval_separation.enforce_approval(
             db, user=current_user, artefact_type="requirement", record_id=requirement.id,
             creator_id=requirement.creator_id, organization_id=project.organization_id, project_id=project_id,
-            comment=payload.change_note,
+            comment=payload.change_note, check_record=False,
         )
     new_version = edit_requirement(
         db, project, requirement, current_user,
@@ -436,6 +437,9 @@ def update_requirement(
             else [PlacementPair(p.component_id, p.category_id) for p in payload.additional_places]
         ),
     )
+    if payload.status == RequirementStatus.APPROVED:
+        # After the edit, so the checks read the record as it is approved (a change of type changes the rules that apply).
+        check_record_approval(db, project, current_user, "requirement", requirement.id)
     log_event(db, entity_type="requirement", entity_id=requirement.id, action="updated",
               actor_id=current_user.id, project_id=project_id, detail={"change_note": payload.change_note})
     requirements_updated_total.inc()

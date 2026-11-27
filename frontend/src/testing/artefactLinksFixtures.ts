@@ -83,6 +83,7 @@ export function buildLinksApi(overrides: Partial<ArtefactLinksApi> = {}): Artefa
     create: fn(async () => undefined),
     createMany: fn(async () => undefined),
     remove: fn(async () => undefined),
+    confirm: fn(async () => undefined),
     ...overrides,
   };
 }

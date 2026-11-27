@@ -1,14 +1,15 @@
 """
 Module: modules.traceability.baseline_checks
 
-The two baseline checks governance provides, registered as `BaselineCheckProvider`s of the `baseline_policies` part:
-required fields and required approvals. Other modules register their own checks through the same hook; whether a check
-runs is the project's baseline policy (`baseline_policy`).
+The module's baseline checks, registered as `BaselineCheckProvider`s: required fields and required approvals (the
+`baseline_policies` part) and the traceability rules at the Required level (the `traceability_rules` part). Other modules
+register their own checks through the same hook; whether a check runs is the project's baseline policy (`baseline_policy`).
 
 Responsibilities:
 - `required_fields`: every record of a type the policy names fields for has each of them filled.
 - `required_approvals`: a stage baseline can approve every requirement it holds that is still a draft, and a manual
   baseline holds only requirements that are already approved.
+- `traceability_rules`: every record meets every Required traceability rule that applies to it.
 
 Design decisions:
 - A field is one of the type's list columns (`RecordColumn`), read through the type's own record table with the person who
@@ -21,10 +22,13 @@ Design decisions:
   the separation rule on its own; this check lists every one.
 - Only the requirement has an approval gate and a snapshot provider at once, so it is the only type this check judges; a
   type that gains both needs its own entry here (`backend/tests/test_governance_baseline_checks.py` fails until it has).
+- "Required approvals" does not judge a person's approval of a record: it is the approval being asked for.
+- A rule met only by carried-over links fails like an unmet one (`rule_evaluation`); a rule that cannot be evaluated fails
+  nothing, and the status view reports it. A failure names the rule and what is missing, never another record.
 - A check only reads and never commits.
 
 Dependencies: `baseline_policy` (the fields to require), `modules.registry` (record tables), `services.approval_policy`
-and `services.approval_separation` (who may approve), `models.requirement`.
+and `services.approval_separation` (who may approve), `status` (rule results), `models.requirement`.
 """
 
 from __future__ import annotations
@@ -35,6 +39,7 @@ from collections.abc import Sequence
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.code_rules import leading_code
 from app.models.enums import ProjectRole, RequirementStatus
 from app.models.project import Project
 from app.models.requirement import Requirement, RequirementVersion
@@ -43,7 +48,10 @@ from app.modules import registry
 from app.modules.registry import RecordFilters
 from app.modules.seams import BaselineCheckContext, BaselineCheckFailure
 from app.modules.traceability import baseline_policy
-from app.services import approval_policy, approval_separation
+from app.modules.traceability.enums import RuleLevel, TraceabilityState
+from app.modules.traceability.rule_evaluation import LeafResult
+from app.modules.traceability.status import RULES_CHECK_KEY, RuleStatus, record_statuses
+from app.services import approval_policy, approval_separation, record_summaries
 from app.services.rbac import get_effective_project_roles
 
 REQUIRED_FIELDS_KEY = "required_fields"
@@ -66,7 +74,7 @@ def check_required_fields(
         One failure per record and blank required field, in type and code order; empty when the policy names no field, when
         the baseline has no actor, or when every field is filled. A field the project's type has no column for is skipped.
     """
-    wanted = baseline_policy.required_fields(db, context.project_id, context.kind)
+    wanted = baseline_policy.required_fields(db, context.project_id, context.kind, automated=context.automated)
     project = db.get(Project, context.project_id)
     actor = None if context.actor_id is None else db.get(User, context.actor_id)
     if not wanted or project is None or actor is None:
@@ -107,11 +115,12 @@ def check_required_approvals(
     Returns:
         For a stage baseline, one failure per draft or reviewed requirement the person taking the baseline may not approve (a
         person who may not approve requirements at all, or one the separation rule bars from approving what they created);
-        for a manual baseline, one failure per requirement that is not approved. Empty when all pass.
+        for a manual baseline, one failure per requirement that is not approved. Empty when all pass, and for a person's
+        approval of one record, which is the approval the check would ask for.
     """
     ids = list(record_ids.get("requirement", ()))
     project = db.get(Project, context.project_id)
-    if not ids or project is None:
+    if context.kind == "approval" or not ids or project is None:
         return []
     rows = db.execute(
         select(Requirement.id, Requirement.unique_code, Requirement.creator_id, RequirementVersion.status)
@@ -149,3 +158,59 @@ def check_required_approvals(
         failure(i, code, "A separate approver is required and the person taking the baseline created the requirement.")
         for i, code, creator in pending if creator == actor.id
     ]
+
+
+def _needs(leaf: LeafResult) -> str:
+    """One unmet requirement: what is counted, what was found and what is needed."""
+    if leaf.maximum is not None and leaf.count > leaf.maximum:
+        return f"{leaf.label} (found {leaf.count}, at most {leaf.maximum} allowed)"
+    return f"{leaf.label} (found {leaf.count}, at least {leaf.minimum} needed)"
+
+
+def _rule_message(status: RuleStatus) -> str:
+    """The sentence naming the rule a record fails and why."""
+    named = f'Traceability rule "{status.entry.rule.name}"'
+    if status.state == TraceabilityState.INHERITED:
+        carried = "; ".join(leaf.label for leaf in status.leaves if leaf.state == TraceabilityState.INHERITED)
+        return f"{named} is met only by links carried over from another record: {carried}. Confirm or replace them."
+    missing = "; ".join(_needs(leaf) for leaf in status.leaves if leaf.state == TraceabilityState.UNMET)
+    return f"{named} is not met: {missing}."
+
+
+def check_traceability_rules(
+    db: Session, context: BaselineCheckContext, record_ids: dict[str, Sequence[uuid.UUID]],
+) -> list[BaselineCheckFailure]:
+    """`BaselineCheckProvider.check` for the Required traceability rules.
+
+    Args:
+        db: Active session (read only).
+        context: The baseline being written or the approval being made.
+        record_ids: The records by type.
+
+    Returns:
+        One failure per record and Required rule it does not meet with links a person authored or confirmed; empty when
+        every record meets every rule that applies to it.
+    """
+    project = db.get(Project, context.project_id)
+    if project is None:
+        return []
+    failures: list[BaselineCheckFailure] = []
+    for artefact_type, ids in sorted(record_ids.items()):
+        found = record_statuses(db, project, artefact_type, ids, levels=(RuleLevel.REQUIRED,))
+        failing = [
+            (record_id, rule)
+            for record_id, status in sorted(found.records.items())
+            for rule in status.rules
+            if rule.state != TraceabilityState.MET
+        ]
+        if not failing:
+            continue
+        summaries = record_summaries.read_summaries(db, project.id, artefact_type, sorted({i for i, _ in failing}))
+        for record_id, rule in failing:
+            summary = summaries.get(record_id)
+            code = None if summary is None else leading_code(summary.label)
+            failures.append(BaselineCheckFailure(
+                artefact_type=artefact_type, artefact_id=record_id, check_key=RULES_CHECK_KEY, message=_rule_message(rule),
+                code=code or "",
+            ))
+    return failures

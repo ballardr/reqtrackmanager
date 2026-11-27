@@ -55,7 +55,7 @@ The module has nine independently switchable parts, called [sub-components](../o
 | Baseline policies | Checks that run before a baseline |
 | Governance health | The Governance health page and its settings |
 
-The other four parts belong to the Traceability half, which is not yet available; see [Known limitations](./known-limitations.md). A part switched off hides its screens and tools and keeps its data.
+The other four parts belong to the Traceability half, which has no screens yet; see [Known limitations](./known-limitations.md). A part switched off hides its screens and tools and keeps its data.
 
 ## Enabling the module
 

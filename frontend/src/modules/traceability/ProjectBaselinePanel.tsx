@@ -35,19 +35,8 @@ import { labelOptions } from "../../utils/labelOptions";
 import { sortRows, type SortValue } from "../../utils/sortRows";
 import { projectGovernanceApi } from "./api";
 import { BaselineSettingsFields } from "./BaselineSettingsFields";
-import { baselineProblem, DEFAULT_BASELINE_SETTINGS, sameBaseline, sourcesLabel } from "./policyText";
+import { baselineProblem, DEFAULT_BASELINE_SETTINGS, runsBeforeLabel, sameBaseline, sourcesLabel } from "./policyText";
 import { BASELINE_KIND_LABEL, type BaselineKind, type BaselinePreview, type BaselineType, type EffectiveBaselineCheck, type EffectiveBaselineField, type ProjectBaseline } from "./types";
-
-/**
- * @param stage Whether a check or field runs before stage baselines.
- * @param manual Whether it runs before manual baselines.
- * @returns The baselines it runs before, in words.
- */
-function runsBefore(stage: boolean, manual: boolean): string {
-  if (stage && manual) return "Stage and manual baselines";
-  if (stage) return "Stage baselines";
-  return manual ? "Manual baselines" : "No baseline";
-}
 
 /**
  * @param projectId The project whose baseline policy is shown.
@@ -124,7 +113,7 @@ export function ProjectBaselinePanel({ projectId }: { projectId: string }) {
 }
 
 /**
- * The checks that run before this project's baselines, each with the baselines it runs before and where it comes from.
+ * The checks that run before this project's baselines and approvals, each with what it runs before and where it comes from.
  *
  * @param checks The effective checks.
  */
@@ -133,7 +122,7 @@ function ChecksInForce({ checks }: { checks: EffectiveBaselineCheck[] }) {
   const [sort, setSort] = useUrlSort(keys);
   const values: Record<string, (row: EffectiveBaselineCheck) => SortValue> = {
     check: (row) => row.name ?? row.key,
-    check_runs: (row) => runsBefore(row.stage, row.manual),
+    check_runs: (row) => runsBeforeLabel(row),
     check_source: (row) => sourcesLabel(row.sources),
   };
   const columns: DirectoryColumn<EffectiveBaselineCheck>[] = [
@@ -146,7 +135,7 @@ function ChecksInForce({ checks }: { checks: EffectiveBaselineCheck[] }) {
         </span>
       ),
     },
-    { key: "check_runs", label: "Runs before", sortable: true, render: (row) => runsBefore(row.stage, row.manual) },
+    { key: "check_runs", label: "Runs before", sortable: true, render: (row) => runsBeforeLabel(row) },
     { key: "check_source", label: "Source", sortable: true, render: (row) => <CellText lines={2}>{sourcesLabel(row.sources)}</CellText> },
   ];
   return (
@@ -171,7 +160,7 @@ function FieldsInForce({ fields, types }: { fields: EffectiveBaselineField[]; ty
   const values: Record<string, (row: EffectiveBaselineField) => SortValue> = {
     field_type: (row) => typeName(row.artefact_type),
     field: (row) => row.field_label ?? row.field_key,
-    field_runs: (row) => runsBefore(row.stage, row.manual),
+    field_runs: (row) => runsBeforeLabel(row),
     field_source: (row) => sourcesLabel(row.sources),
   };
   const columns: DirectoryColumn<EffectiveBaselineField>[] = [
@@ -182,7 +171,7 @@ function FieldsInForce({ fields, types }: { fields: EffectiveBaselineField[]; ty
         ? <CellText lines={2}>{row.field_label}</CellText>
         : <CellText lines={2}>{`${row.field_key} (not offered in this project)`}</CellText>,
     },
-    { key: "field_runs", label: "Runs before", sortable: true, render: (row) => runsBefore(row.stage, row.manual) },
+    { key: "field_runs", label: "Runs before", sortable: true, render: (row) => runsBeforeLabel(row) },
     { key: "field_source", label: "Source", sortable: true, render: (row) => <CellText lines={2}>{sourcesLabel(row.sources)}</CellText> },
   ];
   return (

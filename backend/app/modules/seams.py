@@ -353,13 +353,16 @@ class ReviewAdapter:
 
 @dataclass(frozen=True)
 class BaselinePolicy:
-    """What governance policy asks of a project's baselines: the answer of `GovernanceSeam.BASELINE`
-    (`services.baseline` reads it before a baseline is written).
+    """What governance policy asks of a project's baselines and approvals: the answer of `GovernanceSeam.BASELINE`
+    (`services.baseline` reads it before a baseline is written or a record is approved).
 
     Attributes:
         stage_checks: Namespaced keys (`<module key>:<check key>`) of the checks that run before a stage baseline, the one
-            written when a stage enters a locked phase.
+            written when a stage enters a locked phase, whether a person or the review deadline moved it.
         manual_checks: The keys of the checks that run before a manual baseline.
+        manual_approval_checks: The keys of the checks that run when a person approves one record.
+        automated_approval_checks: The keys of the checks that run, beside `stage_checks`, when the product approves a
+            stage itself because its review deadline passed.
         notify_managers: Whether the project's managers are told when the automatic approval of a stage is refused by a
             check (the review-deadline sweep, which retries daily).
         A check key names a registered `BaselineCheckProvider`; one that is not registered or not in effect for the project
@@ -368,26 +371,38 @@ class BaselinePolicy:
 
     stage_checks: tuple[str, ...] = ()
     manual_checks: tuple[str, ...] = ()
+    manual_approval_checks: tuple[str, ...] = ()
+    automated_approval_checks: tuple[str, ...] = ()
     notify_managers: bool = True
 
-    def checks_for(self, kind: Literal["stage", "manual"]) -> tuple[str, ...]:
-        """The check keys that run before a baseline of `kind`."""
-        return self.stage_checks if kind == "stage" else self.manual_checks
+    def checks_for(self, kind: Literal["stage", "manual", "approval"], *, automated: bool = False) -> tuple[str, ...]:
+        """The check keys that run before a baseline of `kind`, or before a person's approval of a record (`approval`).
+        `automated` marks a stage baseline taken by the review deadline, which also runs the automated approval checks."""
+        if kind == "approval":
+            return self.manual_approval_checks
+        if kind == "manual":
+            return self.manual_checks
+        if automated:
+            return tuple(sorted({*self.stage_checks, *self.automated_approval_checks}))
+        return self.stage_checks
 
 
 @dataclass(frozen=True)
 class BaselineCheckContext:
-    """What a baseline check is told about the baseline being written.
+    """What a baseline check is told about the baseline being written or the approval being made.
 
     Attributes:
-        project_id: The project being baselined.
-        kind: `stage` (a stage entering a locked phase, which is itself the approval act for drafts) or `manual`.
-        actor_id: The person who triggered the baseline.
+        project_id: The project.
+        kind: `stage` (a stage entering a locked phase, which is itself the approval act for drafts), `manual`, or
+            `approval` (one person approving one record; no baseline is written).
+        actor_id: The person who triggered it (a project manager standing in for the product when `automated`).
+        automated: The product is approving a stage because its review deadline passed.
     """
 
     project_id: uuid.UUID
-    kind: Literal["stage", "manual"]
+    kind: Literal["stage", "manual", "approval"]
     actor_id: uuid.UUID | None
+    automated: bool = False
 
 
 @dataclass(frozen=True)

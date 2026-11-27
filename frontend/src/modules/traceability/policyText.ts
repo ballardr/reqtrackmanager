@@ -25,7 +25,8 @@ export const EMPTY_REVIEW_VALUES: ReviewSettingsValues = { interval_days: null, 
 
 /** The baseline policy a project or profile that has set nothing starts its form from. */
 export const DEFAULT_BASELINE_SETTINGS: BaselineSettings = {
-  applies_to_stage: true, applies_to_manual: false, notify_managers: true, checks: [], required_fields: [],
+  applies_to_stage: true, applies_to_manual: false, approval_checks: "off", notify_managers: true, checks: [],
+  required_fields: [],
 };
 
 /**
@@ -102,7 +103,9 @@ export function usesRequiredFields(checks: readonly string[]): boolean {
  * @returns Why it cannot be saved, or `null` when it can.
  */
 export function baselineProblem(settings: BaselineSettings): string | null {
-  if (!settings.applies_to_stage && !settings.applies_to_manual) return "Select at least one kind of baseline for the checks to run before.";
+  if (!settings.applies_to_stage && !settings.applies_to_manual && settings.approval_checks === "off") {
+    return "Select at least one kind of baseline or approval for the checks to run before.";
+  }
   return null;
 }
 
@@ -115,7 +118,24 @@ export function sameBaseline(left: BaselineSettings, right: BaselineSettings): b
   const fields = (s: BaselineSettings) => s.required_fields.map((f) => `${f.artefact_type}/${f.field_key}`).sort().join("|");
   return left.applies_to_stage === right.applies_to_stage
     && left.applies_to_manual === right.applies_to_manual
+    && left.approval_checks === right.approval_checks
     && left.notify_managers === right.notify_managers
     && [...left.checks].sort().join("|") === [...right.checks].sort().join("|")
     && fields(left) === fields(right);
+}
+
+/**
+ * @param row Whether a check or required field runs before stage baselines, manual baselines, manual approvals and
+ * automated approvals.
+ * @returns What it runs before, in words ("Stage baselines, manual approvals"), or "Nothing".
+ */
+export function runsBeforeLabel(row: { stage: boolean; manual: boolean; manual_approval: boolean; automated_approval: boolean }): string {
+  const parts = [
+    row.stage && "stage baselines",
+    row.manual && "manual baselines",
+    row.manual_approval && "manual approvals",
+    row.automated_approval && "automated approvals",
+  ].filter((part): part is string => Boolean(part));
+  const text = parts.join(", ");
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : "Nothing";
 }
