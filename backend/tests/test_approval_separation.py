@@ -36,7 +36,7 @@ from tests.stage_helpers import move_stage
 
 GATED_TYPES = {
     "requirement", "change_request", "decision", "risk", "strategy", "future_state", "guiding_principle",
-    "project_compliance_requirement", "pain_point",
+    "project_compliance_requirement", "pain_point", "traceability_exception",
 }
 
 

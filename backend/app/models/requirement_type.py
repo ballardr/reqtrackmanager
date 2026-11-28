@@ -67,7 +67,9 @@ class ProjectRequirementType(UUIDPKMixin, TimestampMixin, Base):
         ),
     )
 
-    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
     org_type_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("requirement_type_definitions.id", ondelete="SET NULL"), nullable=True
     )

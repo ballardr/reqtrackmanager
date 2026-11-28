@@ -61,17 +61,18 @@ def create_link(
 
     Raises:
         ValueError: `source_type`/`target_type` is not a registered artefact type (a caller typo, or a module that did not
-            declare it in `ModuleDefinition.artefact_types`; never taken directly from request input).
+            declare it in `ModuleDefinition.artefact_types`; never taken directly from request input), or the type takes no
+            links (`ModuleDefinition.not_linkable`).
         sqlalchemy.exc.IntegrityError: this exact link exists (the typed unique constraint or the untyped partial unique
             index); callers wanting a clean 400 pre-check, as `routers.requirements.link_action` does.
         services.link_types.LinkRuleError: (a `ValueError`) a link type restriction or artefact-type rule forbids the pair.
     """
-    from app.modules.registry import get_all_registered_artefact_types
+    from app.modules.registry import get_linkable_artefact_types
 
-    valid_types = get_all_registered_artefact_types()
+    valid_types = get_linkable_artefact_types()
     for label, value in (("source_type", source_type), ("target_type", target_type)):
         if value not in valid_types:
-            raise ValueError(f"{label} {value!r} is not a registered artefact type.")
+            raise ValueError(f"{label} {value!r} is not a registered artefact type that can be linked.")
     if enforce_rules and link_type_id is not None:
         from app.models.requirement_link_type import RequirementLinkTypeDefinition
         from app.services.link_types import validate_link_allowed

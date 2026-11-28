@@ -43,9 +43,9 @@ from app.models.requirement_link_type import (
 )
 from app.modules.registry import (
     get_all_link_type_seeds,
-    get_all_registered_artefact_types,
     get_artefact_type_label,
     get_link_type_seed_owners,
+    get_linkable_artefact_types,
     is_module_enabled,
 )
 from app.services.link_type_scope import (
@@ -73,7 +73,7 @@ def normalise_artefact_types(types: Iterable[str] | None, *, field_name: str) ->
     """
     if not types:
         return None
-    valid = get_all_registered_artefact_types()
+    valid = get_linkable_artefact_types()
     cleaned = list(dict.fromkeys(types))
     unknown = [t for t in cleaned if t not in valid]
     if unknown:
@@ -172,15 +172,15 @@ def ensure_org_seeds(db: Session, organization_id: uuid.UUID) -> None:
 
 def list_org_artefact_types(db: Session, organization_id: uuid.UUID) -> list[str]:
     """The artefact types that exist in the organisation: the core types plus
-    those of every module enabled in it, sorted by display label."""
+    those of every module enabled in it, sorted by display label. Types that take no links are left out."""
     from app.models.enums import CORE_ARTEFACT_TYPES
-    from app.modules.registry import get_module_registry
+    from app.modules.registry import get_module_registry, get_not_linkable_types
 
     types = set(CORE_ARTEFACT_TYPES)
     for definition in get_module_registry().values():
         if definition.artefact_types and is_module_enabled(db, organization_id, definition.key):
             types.update(definition.artefact_types)
-    return sorted(types, key=lambda t: get_artefact_type_label(t).lower())
+    return sorted(types - set(get_not_linkable_types()), key=lambda t: get_artefact_type_label(t).lower())
 
 
 def get_artefact_rules(
@@ -437,7 +437,7 @@ def set_artefact_rule(
         ValueError: If the type is unregistered, the list is empty, or an id is not
             a link type that scope can name.
     """
-    if artefact_type not in get_all_registered_artefact_types():
+    if artefact_type not in get_linkable_artefact_types():
         raise ValueError(f"Unknown artefact type: {artefact_type}.")
     wanted = set(link_type_ids)
     if not wanted:

@@ -39,7 +39,7 @@ def test_each_content_module_reports_its_types_once_it_is_on(client, admin_token
     other, other_token = _setup(client, admin_token, "Health Categories Bare Org")
     bare = create_project(client, other_token, other["id"], "Bare")
     bare_keys = {c["key"] for c in _get_health(client, other_token, bare["id"])["categories"]}
-    assert bare_keys == {"requirement", "change_request", "project_stage"}
+    assert bare_keys == {"requirement", "change_request", "project_stage", "traceability:traceability_exceptions"}
 
 
 def test_a_new_record_counts_in_its_category_and_is_not_done(client, admin_token):

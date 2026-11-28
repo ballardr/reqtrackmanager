@@ -406,7 +406,7 @@ def test_requirements_report_the_expected_end_and_start_of_their_stage_phase(cli
 def test_the_overview_counts_overdue_and_upcoming_phases_for_the_viewers_own_day(client, admin_token, org_id):
     project = create_project(client, admin_token, org_id, "Phase Figures")
     stage = _stage(client, admin_token, project["id"])
-    today = date.today()
+    today = datetime.now(UTC).date()
     scoping = _phase(client, admin_token, project["id"], "Scoping")
     review = _phase(client, admin_token, project["id"], "Review")
     # The current phase ended yesterday (overdue); the next one starts in three days (within the default lead time).

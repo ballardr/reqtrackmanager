@@ -17,7 +17,7 @@ import io
 import json
 import uuid
 import zipfile
-from datetime import date, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select, text
 
@@ -52,7 +52,7 @@ from tests.conftest import (
 )
 from tests.db_helpers import must_get
 
-TODAY = date.today()
+TODAY = datetime.now(UTC).date()
 PASSWORD = "Password123!"
 
 

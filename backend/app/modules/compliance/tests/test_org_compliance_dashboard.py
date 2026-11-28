@@ -15,7 +15,7 @@ projects have real, differently-shaped compliance data to aggregate across.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, datetime, timedelta
 
 from app.modules.compliance.tests.test_compliance_evidence_api import _create_evidence
 from app.modules.compliance.tests.test_compliance_standards_api import _base, _grant_compliance_manager
@@ -26,7 +26,7 @@ from app.modules.compliance.tests.test_project_compliance_api import (
 )
 from tests.conftest import auth_headers, create_org_user, create_project, login
 
-TODAY = date.today()
+TODAY = datetime.now(UTC).date()
 
 
 def _pcr_for(client, token, project_id, assignment_id, requirement_id):

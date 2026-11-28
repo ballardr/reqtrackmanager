@@ -1852,6 +1852,9 @@ class LifecycleDefinition:
         record_model: The SQLAlchemy model of the type (an `id`, a `creator_id` and a `project_id`), so the approval
             separation rule can read who created a record (`services.approval_separation`). Required for a type with
             a gated state.
+        self_approval_org_admins_only: Of the people who submitted a record, only an organisation administrator may
+            approve it, always with a comment. The project and organisation approval separation settings still apply, and
+            can require another person even of an administrator.
     """
 
     label: str
@@ -1862,6 +1865,7 @@ class LifecycleDefinition:
     gated: tuple[str, ...] = ()
     entry_guard: Callable[[Session, User, Project, uuid.UUID, str], None] | None = None
     record_model: Any = None
+    self_approval_org_admins_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -2545,6 +2549,8 @@ class ModuleDefinition:
             so its records are captured in project baselines; none means not part of baselines.
         not_placeable: `{type: reason}` for a type that cannot sit in the
             component/category tree; every other type uses `artefact_placements`.
+        not_linkable: `{type: reason}` for a type whose records take no part in links: no link can be created to or
+            from one, the finder never offers it, no link type or traceability rule can name it and it has no link graph.
         not_creatable_from_links: `{type: reason}` for a type a person cannot
             author, so the Links panel never offers "Create new" for it.
         perf_generators / no_perf_generator: `PerfDatasetGenerator`s scaling a
@@ -2678,6 +2684,7 @@ class ModuleDefinition:
     report_snippets: tuple[ReportSnippet, ...] = field(default=())
     record_tables: dict[str, RecordTableProvider] = field(default_factory=dict)
     not_importable: dict[str, str] = field(default_factory=dict)
+    not_linkable: dict[str, str] = field(default_factory=dict)
     not_creatable_from_links: dict[str, str] = field(default_factory=dict)
     not_placeable: dict[str, str] = field(default_factory=dict)
     record_comments: dict[str, RecordCommentProvider] = field(default_factory=dict)
@@ -2710,6 +2717,11 @@ class ModuleDefinition:
         Raises:
             ValueError: On the first problem found, naming the module and key.
         """
+        for artefact_type, reason in self.not_linkable.items():
+            if artefact_type not in self.artefact_types or not reason.strip():
+                raise ValueError(
+                    f"Module {self.key!r}: not_linkable {artefact_type!r} needs a type of this module and a reason."
+                )
         declared = {sub.key: sub for sub in self.sub_components}
         for sub in self.sub_components:
             for needed in sub.requires:
@@ -4435,10 +4447,23 @@ def get_baseline_snapshot_providers() -> dict[str, tuple[str, BaselineSnapshotPr
     return providers
 
 
+def get_not_linkable_types() -> dict[str, str]:
+    """`{artefact type: reason}` for every type a module declared takes no part in links (no core type is among them)."""
+    reasons: dict[str, str] = {}
+    for definition in get_module_registry().values():
+        reasons.update(definition.not_linkable)
+    return reasons
+
+
+def get_linkable_artefact_types() -> set[str]:
+    """Every registered artefact type a link may name: all of them but the `not_linkable` ones."""
+    return get_all_registered_artefact_types() - set(get_not_linkable_types())
+
+
 def get_not_creatable_from_links_types() -> dict[str, str]:
     """`{artefact type: reason}` for every type the Links panel cannot offer "Create new" for: each module's
-    `not_creatable_from_links` (no core type is among them)."""
-    reasons: dict[str, str] = {}
+    `not_creatable_from_links` and every type that takes no links at all (no core type is among them)."""
+    reasons: dict[str, str] = get_not_linkable_types()
     for definition in get_module_registry().values():
         reasons.update(definition.not_creatable_from_links)
     return reasons

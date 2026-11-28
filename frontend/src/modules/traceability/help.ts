@@ -69,3 +69,22 @@ export const GOVERNANCE_HELP = {
   healthInterval: "How often an interval snapshot is refreshed.",
   healthRunner: "The person the baseline checks of a snapshot run as. With none, the checks run only when someone presses Refresh now.",
 } as const;
+
+/** Help text for the traceability exception screens. */
+export const EXCEPTION_HELP = {
+  rule: "The traceability rule the record is excepted from.",
+  record: "The one record the exception covers.",
+  cover: [
+    "Whether the record is excepted from the rule today.",
+    "Covering: approved and in force.",
+    "Not approved: requested, rejected, withdrawn or revoked.",
+    "Expired: the expiry date has passed.",
+    "Rule no longer applies: the rule was removed, hidden or switched off.",
+    "Needs organisation approval: the organisation enforces the rule and the approval was not given at that level.",
+  ].join("\n"),
+  expiresOn: "The last day the exception covers. Without a date it covers until revoked.",
+  reviewDate: "When the exception is next to be reviewed. It sends a reminder and does not end the cover.",
+  requester: "The user or group asking for the exception. A requester never approves it.",
+  approver: "A nominated approver, told of the request. Nomination gives no right to approve.",
+  openOnly: "Only exceptions awaiting a decision or approved and not expired.",
+};

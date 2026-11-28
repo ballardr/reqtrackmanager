@@ -1,7 +1,7 @@
 """Tests for the data Compliance notifications carry so they open their subject: a grant on a standard names the
 standard, and a standard-level review (which has no project) names the standard instead of the review."""
 
-from datetime import date, timedelta
+from datetime import UTC, datetime, timedelta
 
 from app.database import SessionLocal
 from app.modules.compliance.tests.test_compliance_standards_api import _base
@@ -9,7 +9,7 @@ from app.modules.compliance.tests.test_project_compliance_api import _setup_publ
 from app.services.review_engine import send_review_reminders as send_review_due_notifications
 from tests.conftest import auth_headers, create_org_user, login
 
-TODAY = date.today()
+TODAY = datetime.now(UTC).date()
 
 
 def _of_type(client, token, notification_type: str) -> list[dict]:

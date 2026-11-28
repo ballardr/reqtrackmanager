@@ -9,6 +9,8 @@
  *   stories.
  * - Offer three choices per type (default, submitter may approve with a comment, separate approver required), shown
  *   locked with the reason when the organisation requires a separate approver and the project is not exempt.
+ * - For a type whose self-approval only an organisation administrator may give, name the administrator in the choices and
+ *   help, so they never read as letting any submitter approve.
  *
  * Design decisions: the default choice stores nothing, so a nested project follows its parent project until it sets its
  * own; a locked type still names the organisation as the reason rather than failing on save.
@@ -63,9 +65,12 @@ export function ApprovalSeparationSection({ projectId, api = approvalSeparationA
 
   if (failed && !data) return <p className="text-muted" role="alert">{text.loadFailed}</p>;
   if (!data) return <Spinner />;
-  const options = [
-    { value: "inherit", label: data.has_parent ? text.followParent : text.byDefault },
-    { value: "creator", label: text.creatorWithComment },
+  const optionsFor = (type: ProjectSeparation) => [
+    {
+      value: "inherit",
+      label: data.has_parent ? text.followParent : type.self_approval_org_admins_only ? text.byDefaultOrgAdmin : text.byDefault,
+    },
+    { value: "creator", label: type.self_approval_org_admins_only ? text.orgAdminWithComment : text.creatorWithComment },
     { value: "separate", label: text.separate },
   ];
 
@@ -78,8 +83,9 @@ export function ApprovalSeparationSection({ projectId, api = approvalSeparationA
         return (
           <div key={type.artefact_type} className="row" style={{ alignItems: "flex-end" }}>
             <LabeledSelect
-              label={text.fieldLabel(type.label)} help={strings.help.approvalSeparationProject} placeholder={null} autoWidth
-              value={locked ? "separate" : choiceOf(type)} options={options}
+              label={text.fieldLabel(type.label)}
+              help={type.self_approval_org_admins_only ? strings.help.approvalSeparationProjectOrgAdmins : strings.help.approvalSeparationProject}
+              placeholder={null} autoWidth value={locked ? "separate" : choiceOf(type)} options={optionsFor(type)}
               disabled={!data.can_manage || locked} onChange={(value) => void save(type.artefact_type, value as Choice)}
             />
             {locked && <Badge>{text.requiredByOrganisation}</Badge>}

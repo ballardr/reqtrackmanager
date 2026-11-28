@@ -43,8 +43,8 @@ from app.models.project import Project
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.modules.registry import (
     ArtefactSummary,
-    get_all_registered_artefact_types,
     get_artefact_type_label,
+    get_linkable_artefact_types,
 )
 from app.schemas.artefact_links import LinkOrientation
 from app.schemas.change_request import ProposedLinkOut, ProposedLinkPreviewRow
@@ -94,7 +94,7 @@ def _locate_other(
     other_project_id: uuid.UUID | None,
 ) -> tuple[Project, ArtefactSummary]:
     """The far end's project and summary as `actor_id` sees them, else a "not found" problem."""
-    if other_type not in get_all_registered_artefact_types():
+    if other_type not in get_linkable_artefact_types():
         raise ProposedLinkProblem(NOT_FOUND)
     other_project = project
     if other_project_id is not None and other_project_id != project.id:
@@ -236,7 +236,7 @@ def describe_links(
         resolver = resolver_for(far_project_id)
         label: str | None = None
         project_name: str | None = None
-        if resolver is not None and row.other_type in get_all_registered_artefact_types():
+        if resolver is not None and row.other_type in get_linkable_artefact_types():
             resolver.resolve({row.other_type: {row.other_id}})
             summary = resolver.visible((row.other_type, row.other_id))
             if summary is not None and (far_project_id == project.id or summary.project_id == far_project_id):

@@ -88,6 +88,7 @@ def generate_compliance_requirements(ctx: PerfProjectContext) -> dict[str, int]:
         start = dict(ctx.counts)
         action_types = list(db.scalars(
             select(ComplianceActionTypeDefinition.id).where(ComplianceActionTypeDefinition.organization_id == ctx.organization_uuid)
+            .order_by(ComplianceActionTypeDefinition.sort_order, ComplianceActionTypeDefinition.name)
         ))
         catalogue = {"versions": [], "requirements": {}, "required_actions": {}}
         standards, versions, requirements, actions = [], [], [], []

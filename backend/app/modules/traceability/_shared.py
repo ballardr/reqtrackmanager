@@ -48,3 +48,7 @@ GOVERNANCE_MANAGER_ROLE = "governance_manager"
 GOVERNANCE_ORG_MANAGER_ROLE = "governance_org_manager"
 TRACEABILITY_MANAGER_ROLE = "traceability_manager"
 TRACEABILITY_ORG_MANAGER_ROLE = "traceability_org_manager"
+
+#: The registered record type of a traceability exception and the prefix of its codes (`TEX-001`).
+EXCEPTION_ARTEFACT_TYPE = "traceability_exception"
+EXCEPTION_CODE_PREFIX = "TEX"

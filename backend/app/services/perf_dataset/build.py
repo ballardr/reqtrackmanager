@@ -96,16 +96,17 @@ def _requirement_link_types(db: Session, org: OrgPlan) -> list[tuple[uuid.UUID, 
 
 def _record_types() -> dict[str, dict[str, Any]]:
     """What the load generator needs to address each record type through the API, from the registry: its project list
-    path (relative to `/api/v1/projects/{id}/`), whether it has a detail and comments, and whether its list imports
+    path (relative to `/api/v1/projects/{id}/`), whether it has a detail and comments, takes links and whether its list imports
     (export is offered for every type). Taken from the scaling probes, so a module that registers one is covered
     with no edit here."""
-    from app.modules.registry import get_not_importable_types, get_scaling_probes
+    from app.modules.registry import get_not_importable_types, get_not_linkable_types, get_scaling_probes
 
     not_importable = get_not_importable_types()
+    not_linkable = get_not_linkable_types()
     return {
         artefact_type: {
             "list_path": probe.list_path, "has_detail": probe.has_detail, "has_comments": probe.has_comments,
-            "importable": artefact_type not in not_importable,
+            "importable": artefact_type not in not_importable, "linkable": artefact_type not in not_linkable,
         }
         for artefact_type, probe in sorted(get_scaling_probes().items())
     }

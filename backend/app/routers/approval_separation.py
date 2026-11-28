@@ -81,6 +81,7 @@ def _project_response(db: Session, project: Project, user: User) -> ProjectSepar
                 artefact_type=r.gate.artefact_type, label=r.gate.label, module_key=r.gate.module_key,
                 module_name=_module_name(r.gate.artefact_type), own=r.own, chosen=r.chosen, source=r.source,
                 required=r.enforced, exempt=r.required and r.exempt, separate=r.separate,
+                self_approval_org_admins_only=r.gate.org_admins_only,
             )
             for r in separation.resolve_project_separations(db, project)
         ],
@@ -104,6 +105,7 @@ def _org_response(db: Session, org: Organization) -> list[OrgSeparationOut]:
         OrgSeparationOut(
             artefact_type=row["gate"].artefact_type, label=row["gate"].label, module_key=row["gate"].module_key,
             module_name=_module_name(row["gate"].artefact_type), required=row["required"],
+            self_approval_org_admins_only=row["gate"].org_admins_only,
             exemptions=[
                 ExemptionOut(
                     project_id=pid, project_name=projects[pid].name, project_code=projects[pid].code,

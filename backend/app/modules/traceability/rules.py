@@ -46,7 +46,7 @@ from dataclasses import dataclass, replace
 from typing import Any, Literal
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
@@ -54,7 +54,13 @@ from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.modules import registry
 from app.modules.traceability import rule_evaluation, rule_tree
 from app.modules.traceability.enums import ProfileMode, RuleLevel
-from app.modules.traceability.models import RULE_DESCRIPTION_MAX_LENGTH, RULE_NAME_MAX_LENGTH, GovernanceProfile, GovernanceTraceabilityRule
+from app.modules.traceability.models import (
+    RULE_DESCRIPTION_MAX_LENGTH,
+    RULE_NAME_MAX_LENGTH,
+    GovernanceProfile,
+    GovernanceTraceabilityRule,
+    TraceabilityException,
+)
 from app.modules.traceability.profile_resolution import applicable_profiles
 from app.modules.traceability.rule_tree import Node, RuleTreeError
 from app.services import definition_suppression, record_summaries, requirement_types
@@ -141,7 +147,7 @@ def _clean_subtype(value: str | None) -> str | None:
 
 def _check_source(source_type: str) -> None:
     """Raises 422 unless `source_type` is a registered record type whose records can be listed."""
-    if source_type not in registry.get_all_registered_artefact_types() or not record_summaries.has_summaries(source_type):
+    if source_type not in registry.get_linkable_artefact_types() or not record_summaries.has_summaries(source_type):
         raise _unprocessable(f"{source_type!r} is not a record type a rule can apply to.")
 
 
@@ -157,7 +163,7 @@ def link_type_ids_for(db: Session, organization_id: uuid.UUID, project: Project 
 def vocabulary(db: Session, organization_id: uuid.UUID, project: Project | None, source_type: str) -> rule_tree.Vocabulary:
     """What a rule of this owner and source type may name, for `rule_tree` validation."""
     return rule_tree.Vocabulary(
-        artefact_types=registry.get_all_registered_artefact_types(),
+        artefact_types=registry.get_linkable_artefact_types(),
         fields={key: (f.value_kind, f.artefact_types) for key, (_module, f) in registry.get_rule_condition_fields().items()},
         link_type_ids=link_type_ids_for(db, organization_id, project), source_type=source_type,
     )
@@ -339,6 +345,7 @@ def delete_rule(db: Session, *, rule: GovernanceTraceabilityRule, actor_id: uuid
     """Deletes a rule and every project's hiding of it."""
     organization_id, _project = _owner_project(db, rule)
     _audit(db, rule, "deleted", actor_id, organization_id)
+    _keep_rule_names(db, [rule.id])
     definition_suppression.forget_definition(db, RULE_KIND, rule.id)
     db.delete(rule)
     db.flush()
@@ -346,8 +353,23 @@ def delete_rule(db: Session, *, rule: GovernanceTraceabilityRule, actor_id: uuid
 
 def forget_profile_rules(db: Session, profile_id: uuid.UUID) -> None:
     """Removes every project's hiding of the rules a profile owns, before the profile (and so its rules) is deleted."""
-    for rule_id in db.scalars(select(GovernanceTraceabilityRule.id).where(GovernanceTraceabilityRule.profile_id == profile_id)):
+    owned = list(db.scalars(select(GovernanceTraceabilityRule.id).where(GovernanceTraceabilityRule.profile_id == profile_id)))
+    _keep_rule_names(db, owned)
+    for rule_id in owned:
         definition_suppression.forget_definition(db, RULE_KIND, rule_id)
+
+
+def _keep_rule_names(db: Session, rule_ids: Sequence[uuid.UUID]) -> None:
+    """Writes each rule's current name onto the exceptions to it, which outlive the rule and read it by that name."""
+    if not rule_ids:
+        return
+    db.execute(
+        update(TraceabilityException).where(TraceabilityException.rule_id.in_(rule_ids)).values(
+            rule_name=select(GovernanceTraceabilityRule.name)
+            .where(GovernanceTraceabilityRule.id == TraceabilityException.rule_id).scalar_subquery(),
+            updated_at=TraceabilityException.updated_at,
+        )
+    )
 
 
 # --- reading ---------------------------------------------------------------------------------------

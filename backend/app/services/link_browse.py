@@ -46,8 +46,8 @@ from app.models.requirement_alias import RequirementAlias
 from app.modules.registry import (
     ArtefactSummary,
     BrowseLevel,
-    get_all_registered_artefact_types,
     get_artefact_type_label,
+    get_linkable_artefact_types,
     list_artefact_summaries,
 )
 from app.services.change_request_summary import (
@@ -341,7 +341,7 @@ def _authorise(
 def _type_searchable(db: Session, scope: _Scope, other_type: str) -> bool:
     """Whether `other_type` is registered, offered in the searched project and viewable there."""
     return (
-        other_type in get_all_registered_artefact_types()
+        other_type in get_linkable_artefact_types()
         and other_type in linkable_types_for_project(db, scope.searched)
         and scope.resolver.holds(other_type, "view")
     )
@@ -388,7 +388,7 @@ def next_browse_step(
         db, project=project, user_id=user_id, artefact_type=artefact_type, artefact_id=artefact_id,
         other_project_id=other_project_id,
     )
-    if other_type not in get_all_registered_artefact_types():
+    if other_type not in get_linkable_artefact_types():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Linked record type not found.")
     if not _type_searchable(db, scope, other_type):
         return None
@@ -537,7 +537,7 @@ def search_link_candidates(
     )
     needle = (query or "").strip().lower()
     if other_type is not None:
-        if other_type not in get_all_registered_artefact_types():
+        if other_type not in get_linkable_artefact_types():
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Linked record type not found.")
         chosen = _validated_selection(db, scope.searched.id, other_type, selected or {}) if selected else {}
         if not _type_searchable(db, scope, other_type):

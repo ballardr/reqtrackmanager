@@ -10,7 +10,7 @@ from __future__ import annotations
 import csv
 import io
 import uuid
-from datetime import date, timedelta
+from datetime import UTC, datetime, timedelta
 
 from app.database import SessionLocal
 from app.models.audit import AuditEvent
@@ -143,7 +143,7 @@ def test_only_a_compliance_officer_may_import_evidence(client, admin_token, org_
 
 def test_the_evidence_lists_filters_reach_the_export(client, admin_token, org_id):
     project = create_project(client, admin_token, org_id, name="Evidence Tables F")
-    soon = (date.today() + timedelta(days=5)).isoformat()
+    soon = (datetime.now(UTC).date() + timedelta(days=5)).isoformat()
     expiring = _evidence(client, admin_token, project["id"], title="Expiring cert", expiry_date=soon)
     other = _evidence(client, admin_token, project["id"], title="Other cert")
     assert [r["code"] for r in _rows(_export(client, admin_token, project["id"], EVIDENCE, validity="expiring_soon"))] == [expiring["unique_code"]]

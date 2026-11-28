@@ -48,6 +48,7 @@ SMALL = {
             "stakeholder_group": 0.2, "engagement": 0.3, "research_finding": 0.4, "compliance_evidence": 0.2,
             "enhancement_request": 0.3, "architecture_element": 0.3, "architecture_connection": 0.4,
             "architecture_diagram": 0.3, "architecture_state_machine_diagram": 0.3, "architecture_state": 0.9,
+            "traceability_exception": 0.1,
         },
     },
     "compliance": {"standards_per_org": 2, "requirements_per_standard": 6, "required_action_fraction": 0.5, "standards_per_project": 1},
@@ -257,8 +258,10 @@ def test_the_manifest_tells_the_load_generator_how_to_address_every_type(client)
     assert set(manifest["record_types"]) == set(get_scaling_probes())
     assert manifest["record_types"]["risk"] == {
         "list_path": "modules/risk_management/risks", "has_detail": True, "has_comments": True, "importable": True,
+        "linkable": True,
     }
     assert manifest["record_types"]["stakeholder_group"]["has_detail"] is False
+    assert manifest["record_types"]["traceability_exception"]["linkable"] is False  # the link scenarios skip it
     project = manifest["projects"][0]
     assert {"risk", "decision", "pain_point", "engagement", "compliance_evidence"} <= set(project["type_samples"])
     assert all(len(ids) <= 200 and ids for ids in project["type_samples"].values())
@@ -290,7 +293,7 @@ def test_generated_placements_stay_inside_their_own_project_tree(client):
 def test_the_application_reads_every_generated_type(client):
     """The application's own endpoints serve what the generators wrote: each type's list, a record's detail, its
     comments and its link graph answer 200 for an ordinary member, and the list holds the generated records."""
-    from app.modules.registry import get_scaling_probes
+    from app.modules.registry import get_not_linkable_types, get_scaling_probes
 
     manifest = _generate(client, "single")
     org = manifest["organisations"][0]
@@ -309,7 +312,8 @@ def test_the_application_reads_every_generated_type(client):
         first = listed.json()[0]["id"]
         paths = [f"{base}/{first}"] if probe.has_detail else []
         paths += [f"{base}/{first}/comments"] if probe.has_comments else []
-        paths += [f"/api/v1/projects/{project_id}/artefacts/{artefact_type}/{first}/link-graph?depth=2"]
+        if artefact_type not in get_not_linkable_types():
+            paths += [f"/api/v1/projects/{project_id}/artefacts/{artefact_type}/{first}/link-graph?depth=2"]
         paths += [f"/api/v1/projects/{project_id}/artefacts/{artefact_type}/{first}/placements"]
         paths += [f"/api/v1/projects/{project_id}/placements/{artefact_type}?id={first}"]
         for path in paths:

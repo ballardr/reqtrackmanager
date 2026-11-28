@@ -14,6 +14,8 @@ Design decisions:
   refused (409).
 - An evaluation returns counts only and needs the `view` permission on the rule's source type, so a number never reveals
   records the caller cannot open. It evaluates the project's own links.
+- A rule or record covered by an approved exception is counted and shown as `excepted`, never as met; the exception is
+  named only to a caller who may read exceptions.
 - A record's status needs the `view` permission on its type and the record to be one the project holds; the list of a
   type's statuses gives each record's id and counts, never another record's code or title. Neither changes anything.
 - A Required rule is returned with where it is enforced, or the reason it is not, so no screen reads it as blocking when
@@ -37,9 +39,10 @@ from app.models.project import Project
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
 from app.modules import registry
-from app.modules.traceability import rule_fields, rule_presets, rule_tree, rules
+from app.modules.traceability import exception_cover, rule_fields, rule_presets, rule_tree, rules
 from app.modules.traceability import status as traceability_status
 from app.modules.traceability._shared import (
+    EXCEPTION_ARTEFACT_TYPE,
     MANAGE_ORG_TRACEABILITY,
     MANAGE_PROJECT_TRACEABILITY,
     TRACEABILITY_MODULE_KEY,
@@ -61,6 +64,7 @@ from app.modules.traceability.rule_schemas import (
     RecordStatusSummaryOut,
     RuleCreate,
     RuleEvaluationOut,
+    RuleExceptionOut,
     RuleFieldOptionOut,
     RuleLeafCountOut,
     RuleLinkTypeOptionOut,
@@ -159,7 +163,7 @@ def _project_rules_out(db: Session, project: Project, user: User) -> ProjectRule
 
 def _options(db: Session, organization_id: UUID, project: Project | None) -> RuleOptionsOut:
     """What the editor may offer a rule of this owner."""
-    registered = registry.get_all_registered_artefact_types()
+    registered = registry.get_linkable_artefact_types()
     project_id = None if project is None else project.id
     types = [
         RuleTypeOptionOut(
@@ -463,9 +467,18 @@ def get_project_rule_evaluation(
             counts = leaves.setdefault(leaf.path, dict.fromkeys(TraceabilityState, 0))
             counts[leaf.state] += 1
             labels[leaf.path] = leaf.label
+    covers = exception_cover.covers_for(
+        db, project.id, entry.rule.source_type, [r.record_id for r in result.in_scope], {entry.rule.id: entry},
+    )
+    states = [
+        TraceabilityState.EXCEPTED
+        if r.state != TraceabilityState.MET and (r.record_id, entry.rule.id) in covers else r.state
+        for r in result.in_scope
+    ]
     return RuleEvaluationOut(
-        source_total=result.source_total, in_scope=len(result.in_scope), satisfied=result.count(TraceabilityState.MET),
-        inherited=result.count(TraceabilityState.INHERITED), unsatisfied=result.count(TraceabilityState.UNMET),
+        source_total=result.source_total, in_scope=len(result.in_scope), satisfied=states.count(TraceabilityState.MET),
+        inherited=states.count(TraceabilityState.INHERITED), excepted=states.count(TraceabilityState.EXCEPTED),
+        unsatisfied=states.count(TraceabilityState.UNMET),
         leaves=[
             RuleLeafCountOut(
                 path=path, label=labels[path], met=c[TraceabilityState.MET], inherited=c[TraceabilityState.INHERITED],
@@ -509,6 +522,7 @@ def get_type_traceability_status(
                 record_id=r.record_id, status=r.status, highest_level=r.highest_level, applicable=len(r.rules),
                 unmet=sum(1 for x in r.rules if x.state == TraceabilityState.UNMET),
                 inherited=sum(1 for x in r.rules if x.state == TraceabilityState.INHERITED),
+                excepted=sum(1 for x in r.rules if x.state == TraceabilityState.EXCEPTED),
             )
             for _, r in sorted(found.records.items(), key=lambda item: str(item[0]))
         ],
@@ -534,6 +548,8 @@ def get_record_traceability_status(
     if record is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Record not found.")
     context = traceability_status.enforcement_for(db, project)
+    held = get_effective_permissions(db, current_user.id, project_id=project.id)
+    names_exceptions = permission_satisfied(held, encode_permission(EXCEPTION_ARTEFACT_TYPE, "view"))
     outs = []
     for rule in record.rules:
         enforcement = context.for_rule(rule.entry) or traceability_status.Enforcement()
@@ -541,6 +557,10 @@ def get_record_traceability_status(
             rule_id=rule.entry.rule.id, name=rule.entry.rule.name, level=rule.level, source=rule.entry.source,
             source_name=rule.entry.source_name, state=rule.state, enforced_at=list(enforcement.points),
             not_enforced_reason=enforcement.reason,
+            excepted_by=None if rule.exception is None or not names_exceptions else RuleExceptionOut(
+                id=rule.exception.exception_id, unique_code=rule.exception.unique_code, title=rule.exception.title,
+                expires_on=rule.exception.expires_on, rule_changed=rule.exception.rule_changed,
+            ),
             leaves=[
                 LeafStatusOut(
                     path=leaf.path, label=leaf.label, count=leaf.count, confirmed=leaf.confirmed, minimum=leaf.minimum,

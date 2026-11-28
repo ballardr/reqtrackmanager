@@ -140,7 +140,7 @@ class RequirementVersion(UUIDPKMixin, Base):
     # The requirement's type (a project type row, `models.requirement_type`); null for an untyped requirement. Versioned
     # content, so retyping an approved requirement goes through a change request like every other field here.
     project_type_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("project_requirement_types.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=True), ForeignKey("project_requirement_types.id", ondelete="SET NULL"), index=True, nullable=True
     )
     owner_type: Mapped[str] = principal_type_column()
     owner_id: Mapped[uuid.UUID] = principal_id_column()

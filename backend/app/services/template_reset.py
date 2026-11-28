@@ -29,6 +29,12 @@ def keeping_history() -> Iterator[None]:
         _keep_history.reset(token)
 
 
+def keeps_history() -> bool:
+    """Whether a reset runs inside `keeping_history()`, for a module with history of its own to remove only from a
+    template (a discussion)."""
+    return _keep_history.get()
+
+
 def is_retired(entry: dict[str, Any]) -> bool:
     """Whether a reset leaves `entry` out: an archived record, except while `keeping_history()`."""
     return bool(entry.get("is_archived")) and not _keep_history.get()

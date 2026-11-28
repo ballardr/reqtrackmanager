@@ -21,7 +21,7 @@ from app.services import review_engine
 from app.services.reviews import get_due_reviews_for_project, send_due_review_reminders
 from tests.conftest import auth_headers, create_component_and_category, create_org_user, create_project, login
 
-TODAY = date.today()
+TODAY = datetime.now(UTC).date()
 
 _SCOPES: dict[str, tuple[str, str]] = {}
 

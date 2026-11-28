@@ -3637,6 +3637,9 @@ const en = {
     separate: "Separate approver required",
     creatorWithComment: "Submitter may approve, with a comment",
     byDefault: "Default: submitter may approve",
+    /** Project panel options of a type whose self-approval is limited to organisation administrators. */
+    orgAdminWithComment: "Organisation administrator who submitted it may approve, with a comment",
+    byDefaultOrgAdmin: "Default: organisation administrator who submitted it may approve",
     followParent: "Follow parent project",
     /** Organisation panel options. */
     projectDecides: "Project decides",
@@ -3648,7 +3651,7 @@ const en = {
     /** Record pages. */
     selfApproved: "Self-approved",
     selfApprovedHelp: (name: string | null, when: string | null) =>
-      `Approved by its creator${name ? `, ${name}` : ""}${when ? ` on ${when}` : ""}.`,
+      `Approved by its submitter${name ? `, ${name}` : ""}${when ? ` on ${when}` : ""}.`,
     needsOtherApprover: "A separate approver is required and you created this record, so a different person must approve it.",
   },
   lifecycle: {
@@ -3989,6 +3992,8 @@ const en = {
     lifecycleExemptProject: "The project that the requirement, or the ban on skipping steps, does not bind. Its own choice applies again.",
     lifecycleIncludeChildren: "Off: only this project is exempt.\nOn: its nested child projects are exempt too, including projects added to it later.",
     approvalSeparationProject: "Whether the person who created a record may also approve it.\nDefault: the creator may approve without a comment. A nested project follows its parent project's choice.\nSubmitter may approve, with a comment: the creator may approve, and each such approval needs a comment.\nSeparate approver required: another person with the approval permission must approve the record.\nA record approved by its creator is marked Self-approved and the approval is recorded in its history. If the organisation requires a separate approver, this cannot be changed here.",
+    approvalSeparationProjectOrgAdmins: "Whether an organisation administrator who submitted a record may also approve it. Nobody else may approve a record they submitted.\nDefault: they may, with a comment. A nested project follows its parent project's choice.\nOrganisation administrator may approve, with a comment: the same, chosen for this project.\nSeparate approver required: another person must approve, administrators included.\nA record approved by its submitter is marked Self-approved and the approval is recorded in its history.",
+    approvalSeparationOrganizationOrgAdmins: "Whether every project of the organisation needs a separate approver for this record type.\nProject decides: each project chooses; by default only an organisation administrator may approve a record they submitted, with a comment.\nRequired for every project: nobody may approve a record they submitted, and a project cannot relax it. A project listed under Exempt projects is not bound by the requirement.",
     approvalSeparationOrganization: "Whether every project of the organisation needs a separate approver for this record type.\nProject decides: each project chooses; by default the creator may approve.\nRequired for every project: the creator may never approve their own record, and a project cannot relax it. A project listed under Exempt projects is not bound by the requirement.",
     requirementAliasMode: "Allowed: a requirement can be placed in further components and categories, each with a code of its own.\nDisabled: no new further places can be added; the ones that exist keep working and can be made independent.\nA project follows its parent project, then the organisation, until it sets its own value.\nA project that relies on traceability matrices and coverage figures reads them most clearly with one code per requirement: choose Disabled.",
     recordComponents: "The components and categories this record belongs to, for example Hardware or Hardware / Cooling. A record can belong to several, and every list can be filtered by them.",

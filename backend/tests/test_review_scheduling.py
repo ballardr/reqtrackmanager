@@ -1,6 +1,6 @@
 """Tests for Massif (v3) requirement review scheduling (C-R-06..10)."""
 
-from datetime import date, timedelta
+from datetime import UTC, datetime, timedelta
 
 from tests.conftest import auth_headers, create_component_and_category, create_project, login
 
@@ -22,7 +22,7 @@ def test_requirement_with_past_review_date_appears_on_project_due_list(client, a
     project = create_project(client, admin_token, org_id)
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
     req = _create_requirement_with_review(
-        client, admin_token, project["id"], component_id, category_id, str(date.today() - timedelta(days=1)),
+        client, admin_token, project["id"], component_id, category_id, str(datetime.now(UTC).date() - timedelta(days=1)),
     )
     resp = client.get(f"/api/v1/projects/{project['id']}/requirements/reviews/due", headers=auth_headers(admin_token))
     assert resp.status_code == 200
@@ -33,7 +33,7 @@ def test_future_review_date_does_not_appear_on_due_list(client, admin_token, org
     project = create_project(client, admin_token, org_id)
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
     req = _create_requirement_with_review(
-        client, admin_token, project["id"], component_id, category_id, str(date.today() + timedelta(days=30)),
+        client, admin_token, project["id"], component_id, category_id, str(datetime.now(UTC).date() + timedelta(days=30)),
     )
     resp = client.get(f"/api/v1/projects/{project['id']}/requirements/reviews/due", headers=auth_headers(admin_token))
     assert resp.status_code == 200
@@ -44,7 +44,7 @@ def test_recording_review_outcome_drops_requirement_off_due_list(client, admin_t
     project = create_project(client, admin_token, org_id)
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
     req = _create_requirement_with_review(
-        client, admin_token, project["id"], component_id, category_id, str(date.today() - timedelta(days=1)),
+        client, admin_token, project["id"], component_id, category_id, str(datetime.now(UTC).date() - timedelta(days=1)),
     )
     resp = client.post(
         f"/api/v1/projects/{project['id']}/requirements/{req['id']}/reviews",
@@ -60,7 +60,7 @@ def test_failed_review_outcome_requires_a_comment(client, admin_token, org_id):
     project = create_project(client, admin_token, org_id)
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
     req = _create_requirement_with_review(
-        client, admin_token, project["id"], component_id, category_id, str(date.today()),
+        client, admin_token, project["id"], component_id, category_id, str(datetime.now(UTC).date()),
     )
     resp = client.post(
         f"/api/v1/projects/{project['id']}/requirements/{req['id']}/reviews",
@@ -87,7 +87,7 @@ def test_review_assigned_to_a_user_appears_on_their_personal_due_list(client, ad
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
     _create_requirement_with_review(
         client, admin_token, project["id"], component_id, category_id,
-        str(date.today() - timedelta(days=1)), reviewer={"type": "user", "id": reviewer_id},
+        str(datetime.now(UTC).date() - timedelta(days=1)), reviewer={"type": "user", "id": reviewer_id},
     )
 
     reviewer_token = login(client, "reviewer@example.com", "Password123!")
@@ -112,7 +112,7 @@ def test_due_list_includes_reviewer_and_component_names(client, admin_token, org
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
     _create_requirement_with_review(
         client, admin_token, project["id"], component_id, category_id,
-        str(date.today() - timedelta(days=1)), reviewer={"type": "user", "id": reviewer_id},
+        str(datetime.now(UTC).date() - timedelta(days=1)), reviewer={"type": "user", "id": reviewer_id},
     )
 
     resp = client.get(f"/api/v1/projects/{project['id']}/requirements/reviews/due", headers=auth_headers(admin_token))
@@ -152,10 +152,10 @@ def test_due_list_filters_by_component_and_reviewer(client, admin_token, org_id)
 
     req_a = _create_requirement_with_review(
         client, admin_token, project["id"], component_a, category_a_id,
-        str(date.today() - timedelta(days=1)), reviewer={"type": "user", "id": reviewer_id},
+        str(datetime.now(UTC).date() - timedelta(days=1)), reviewer={"type": "user", "id": reviewer_id},
     )
     req_b = _create_requirement_with_review(
-        client, admin_token, project["id"], component_b, category_b_id, str(date.today() - timedelta(days=1)),
+        client, admin_token, project["id"], component_b, category_b_id, str(datetime.now(UTC).date() - timedelta(days=1)),
     )
 
     resp = client.get(
@@ -185,7 +185,7 @@ def test_review_date_cannot_be_changed_by_direct_edit_once_requirement_approved(
     project = create_project(client, admin_token, org_id)
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
     req = _create_requirement_with_review(
-        client, admin_token, project["id"], component_id, category_id, str(date.today()),
+        client, admin_token, project["id"], component_id, category_id, str(datetime.now(UTC).date()),
     )
     client.put(
         f"/api/v1/projects/{project['id']}/requirements/{req['id']}",
@@ -199,7 +199,7 @@ def test_review_date_cannot_be_changed_by_direct_edit_once_requirement_approved(
         f"/api/v1/projects/{project['id']}/requirements/{req['id']}",
         json={
             "name": req["name"], "component_id": component_id, "category_id": category_id,
-            "owner": req["owner"], "review_date": str(date.today() + timedelta(days=5)),
+            "owner": req["owner"], "review_date": str(datetime.now(UTC).date() + timedelta(days=5)),
         },
         headers=auth_headers(admin_token),
     )

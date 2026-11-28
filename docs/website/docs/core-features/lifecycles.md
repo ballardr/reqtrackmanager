@@ -76,6 +76,8 @@ flowchart LR
 
 Some steps need an approval: a change request, a requirement, a Decision, a Risk acceptance, a Compliance requirement assessment, a Pain Point acceptance, and a Strategy, Future State or Guiding Principle. By default the person who created a record may approve it if they hold the approval permission, so a team of one can work. The record then shows a **Self-approved** badge, and the history records the approval as made by its creator.
 
+A **traceability exception** is stricter, because it waives a rule. Of the people who raised or requested it, only an organisation administrator may approve it, and always with a comment. The same settings can require another person even of an administrator.
+
 A project administrator can change this under **Project administration, Lifecycles, Approval**. Each record type with an approval step has three choices:
 
 | Choice | Meaning |

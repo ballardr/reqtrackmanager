@@ -288,7 +288,7 @@ def test_failed_review_outcome_clears_completion(client, admin_token, org_id):
     non-compliant... when a review/audit occurs" — a `FAILED` review
     outcome recorded against a currently-completed requirement clears its
     completion overlay as part of recording that outcome."""
-    from datetime import date, timedelta
+    from datetime import timedelta
 
     project = create_project(client, admin_token, org_id)
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
@@ -296,7 +296,7 @@ def test_failed_review_outcome_clears_completion(client, admin_token, org_id):
         f"/api/v1/projects/{project['id']}/requirements",
         json={
             "name": "Reviewed then failed", "component_id": component_id, "category_id": category_id,
-            "review_date": str(date.today() - timedelta(days=1)),
+            "review_date": str(datetime.now(UTC).date() - timedelta(days=1)),
         },
         headers=auth_headers(admin_token),
     ).json()
@@ -323,7 +323,7 @@ def test_failed_review_outcome_clears_completion(client, admin_token, org_id):
 def test_met_review_outcome_does_not_clear_completion(client, admin_token, org_id):
     """The completion overlay is only cleared on a FAILED outcome — a MET
     outcome recorded against a completed requirement leaves it completed."""
-    from datetime import date, timedelta
+    from datetime import timedelta
 
     project = create_project(client, admin_token, org_id)
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
@@ -331,7 +331,7 @@ def test_met_review_outcome_does_not_clear_completion(client, admin_token, org_i
         f"/api/v1/projects/{project['id']}/requirements",
         json={
             "name": "Reviewed and still met", "component_id": component_id, "category_id": category_id,
-            "review_date": str(date.today() - timedelta(days=1)),
+            "review_date": str(datetime.now(UTC).date() - timedelta(days=1)),
         },
         headers=auth_headers(admin_token),
     ).json()

@@ -483,7 +483,7 @@ def test_a_rule_counts_the_records_it_applies_to_and_those_that_meet_it(client, 
         "Any link", subtype="Project Requirement", requires=_leaf(subtype="Stakeholder Requirement"),
     ))
     assert scenario.evaluation(any_link) == {
-        "source_total": 3, "in_scope": 3, "satisfied": 2, "inherited": 0, "unsatisfied": 1, "problems": [],
+        "source_total": 3, "in_scope": 3, "satisfied": 2, "inherited": 0, "excepted": 0, "unsatisfied": 1, "problems": [],
         "leaves": [{"path": "", "label": "Links to Requirement (Stakeholder Requirement)", "met": 2, "inherited": 0, "unmet": 1}],
     }
     derives_only = _add_rule(client, token, pid, _body(
@@ -593,7 +593,7 @@ def test_an_evaluation_is_counts_only(client, admin_token):
     token, pid = scenario.world.token, scenario.project["id"]
     rule = _add_rule(client, token, pid)
     result = scenario.evaluation(rule)
-    assert set(result) == {"source_total", "in_scope", "satisfied", "inherited", "unsatisfied", "leaves", "problems"}
+    assert set(result) == {"source_total", "in_scope", "satisfied", "inherited", "excepted", "unsatisfied", "leaves", "problems"}
     assert "P1" not in json.dumps(result)
     member = _member(client, token, scenario.world.org["id"], pid, "stakeholder")
     assert client.get(_project_url(pid, f"/{rule['id']}/evaluation"), headers=auth_headers(member)).status_code == 200

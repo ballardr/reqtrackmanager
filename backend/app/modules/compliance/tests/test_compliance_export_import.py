@@ -18,7 +18,7 @@ from __future__ import annotations
 import io
 import uuid
 import zipfile
-from datetime import date, timedelta
+from datetime import UTC, datetime, timedelta
 
 from app.modules.compliance.tests.test_compliance_standards_api import (
     _base,
@@ -36,7 +36,7 @@ from app.modules.compliance.tests.test_project_compliance_api import (
 from tests.conftest import auth_headers, create_org_admin_in, create_project
 from tests.db_helpers import must_get
 
-TODAY = date.today()
+TODAY = datetime.now(UTC).date()
 
 
 def _find_pcr(client, token, project_id, assignment_id, requirement_id):

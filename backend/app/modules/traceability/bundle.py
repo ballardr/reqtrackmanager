@@ -15,7 +15,8 @@ Responsibilities:
   the profile rules it hides (by profile and rule name), its own approval policy rows (roles by kind
   and key, a custom role by name), its own review policy rows (the default owner by email or group name), its own
   baseline policy (check keys and required field keys) and its governance health settings (mode and interval, and the
-  baseline check runner by email).
+  baseline check runner by email), and its traceability exceptions with their comments and evidence
+  (`exception_bundle`; imported last, once every module's records exist).
 - Organisation export and import also carry the organisation's default health mode and interval.
 - Template copy: the choices and approval, review, baseline and health settings rows are project configuration, copied
   unchanged to a project made from a template. The check runner is a named person and is not copied: it is excluded from
@@ -50,7 +51,15 @@ from app.models.organization import Organization, UserOrgRole
 from app.models.project import Project
 from app.models.user import User
 from app.modules import registry
-from app.modules.traceability import approval_policy, baseline_policy, health, profiles, review_policy, rules
+from app.modules.traceability import (
+    approval_policy,
+    baseline_policy,
+    exception_bundle,
+    health,
+    profiles,
+    review_policy,
+    rules,
+)
 from app.modules.traceability.enums import HEALTH_INTERVAL_HOURS, HealthMode, ProfileMode, ProfileTargetKind
 from app.modules.traceability.models import (
     GovernanceProfile,
@@ -72,6 +81,7 @@ HIDDEN_RULES_KEY = rules.HIDDEN_KEY
 HEALTH_SETTINGS_KEY = "governance_health_settings"
 HEALTH_RUNNER_KEY = "governance_health_runner"
 HEALTH_DEFAULT_KEY = "governance_health_default"
+EXCEPTIONS_KEY = exception_bundle.KEY
 _IMPORTED_INFO_KEY = "governance_profiles_imported"
 
 
@@ -214,14 +224,16 @@ def import_org_project_data(
 
 
 def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], dict[uuid.UUID, Any]]:
-    """`ModuleProjectBundleHooks.export`: the project's own choices, by profile name."""
+    """`ModuleProjectBundleHooks.export`: the project's choices, policies, rules, settings and exceptions."""
     rows = db.execute(
         select(GovernanceProfile.name, GovernanceProfileChoice.opted_in)
         .join(GovernanceProfileChoice, GovernanceProfileChoice.profile_id == GovernanceProfile.id)
         .where(GovernanceProfileChoice.project_id == project.id)
         .order_by(GovernanceProfile.name)
     ).tuples().all()
+    exception_entries, files = exception_bundle.export_exceptions(db, project)
     return {
+        EXCEPTIONS_KEY: exception_entries,
         CHOICES_KEY: [{"profile": name, "opted_in": opted_in} for name, opted_in in rows],
         APPROVAL_POLICIES_KEY: approval_policy.export_project_rows(db, project),
         REVIEW_POLICIES_KEY: review_policy.export_project_rows(db, project),
@@ -229,7 +241,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         RULES_KEY: rules.export_project_rows(db, project),
         HIDDEN_RULES_KEY: rules.export_hidden(db, project),
         **_export_health_settings(db, project),
-    }, {}
+    }, files
 
 
 def _export_health_settings(db: Session, project: Project) -> dict[str, Any]:
@@ -307,3 +319,18 @@ def import_project_data(
             )
         except HTTPException as error:
             warnings.add(f"The project's choice about the governance profile {name!r} was not imported: {error.detail}")
+
+
+def reset_for_template(data: dict[str, Any]) -> None:
+    """`ModuleProjectBundleHooks.template_reset`: exceptions become undecided requests."""
+    exception_bundle.reset_for_template(data.get(EXCEPTIONS_KEY) or [])
+
+
+def import_late_project_data(
+    db: Session, project: Project, data: dict[str, Any], file_bytes: dict[str, bytes], current_user: User,
+    users: UserResolver, warnings: BundleImportWarnings,
+) -> None:
+    """`ModuleProjectBundleHooks.import_late`: the exceptions, which name records every module has now created."""
+    exception_bundle.import_exceptions(
+        db, project, data.get(EXCEPTIONS_KEY) or [], file_bytes, current_user, users, warnings,
+    )

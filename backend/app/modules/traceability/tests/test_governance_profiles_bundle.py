@@ -232,4 +232,4 @@ def test_choices_and_policy_rows_are_template_configuration():
         bundle.CHOICES_KEY, bundle.APPROVAL_POLICIES_KEY, bundle.REVIEW_POLICIES_KEY, bundle.BASELINE_POLICY_KEY,
         bundle.HEALTH_SETTINGS_KEY, bundle.RULES_KEY, bundle.HIDDEN_RULES_KEY,
     }
-    assert not hooks.template_record_keys and set(hooks.template_excluded) == {bundle.HEALTH_RUNNER_KEY}
+    assert hooks.template_record_keys == {bundle.EXCEPTIONS_KEY} and set(hooks.template_excluded) == {bundle.HEALTH_RUNNER_KEY}

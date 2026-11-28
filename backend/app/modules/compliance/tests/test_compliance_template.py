@@ -6,7 +6,7 @@ returned to `assessed` with no decision or decider, and evidence has no revalida
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, datetime, timedelta
 
 from app.modules.compliance.tests.test_compliance_export_import import _find_pcr
 from app.modules.compliance.tests.test_project_compliance_api import (
@@ -16,7 +16,7 @@ from app.modules.compliance.tests.test_project_compliance_api import (
 )
 from tests.conftest import auth_headers, create_project
 
-TODAY = date.today()
+TODAY = datetime.now(UTC).date()
 
 
 def test_a_template_clone_copies_assignments_assessments_and_evidence_without_approvals(client, admin_token, org_id):

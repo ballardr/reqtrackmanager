@@ -103,3 +103,23 @@ export const WithoutPermissionTheChoiceIsReadOnly: Story = {
     await expect(await within(canvasElement).findByRole("combobox", { name: "Change request approval" })).toBeDisabled();
   },
 };
+
+/** A type only an organisation administrator may self-approve names the administrator in its choices. */
+export const ATypeLimitedToAdministratorsSaysSo: Story = {
+  args: {
+    api: buildApprovalSeparationApi(buildProjectSeparations([
+      buildProjectSeparation({
+        artefact_type: "traceability_exception", label: "Traceability exception", self_approval_org_admins_only: true,
+      }),
+    ])),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const select = await canvas.findByRole("combobox", { name: "Traceability exception approval" });
+    await expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Default: organisation administrator who submitted it may approve",
+      "Organisation administrator who submitted it may approve, with a comment",
+      "Separate approver required",
+    ]);
+  },
+};

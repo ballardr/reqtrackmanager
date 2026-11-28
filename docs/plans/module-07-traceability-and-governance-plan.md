@@ -12,12 +12,12 @@ moved here from Module 5 Phase 1, and the requests in
 [issue #41](https://github.com/ballardr/reqtrackmanager/issues/41) (Q18). This plan replaces the former separate Module 7
 and Module 8 plans; Module 8 is no longer a separate number.
 
-**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phases 1, 1b, 2, 3, 4, 5 and 6 done 2026-11-26; Phase 7 (steps 7a to 7k), Phase 7.5 (steps a to g), Phases 8, 9, 10 and 11 done 2026-11-26. Phase 12 done 2026-11-28. **Decision tags:** every
+**Status:** Proposed, 2026-11-09. Phase 0 done 2026-11-25. Phases 1, 1b, 2, 3, 4, 5 and 6 done 2026-11-26; Phase 7 (steps 7a to 7k), Phase 7.5 (steps a to g), Phases 8, 9, 10 and 11 done 2026-11-26. Phases 12 and 13 done 2026-11-28. **Decision tags:** every
 decision says `Decided by: User` or `Decided by: Agent`.
 
 ## Status / Resume Here
 
-15 / 23 phases complete. Phase 13 is next.
+16 / 23 phases complete. Phase 14 is next.
 
 | # | Phase | Half | Status |
 |---|-------|------|--------|
@@ -36,7 +36,7 @@ decision says `Decided by: User` or `Decided by: Agent`.
 | 10 | Requirement types (moved from Module 5 Phase 1) | Traceability | [x] Done 2026-11-26 |
 | 11 | Traceability rule configuration, including the requirement hierarchy | Traceability | [x] Done 2026-11-26 |
 | 12 | Enforcement levels, status and baseline hand-off | Traceability | [x] Done 2026-11-28 |
-| 13 | Traceability exceptions | Traceability | [ ] Not started |
+| 13 | Traceability exceptions | Traceability | [x] Done 2026-11-28 |
 | 14 | Cross-project traceability | Traceability | [ ] Not started |
 | 15 | Matrices, coverage + Traceability MCP tools | Traceability | [ ] Not started |
 | 16 | Traceability frontend UI | Traceability | [ ] Not started |
@@ -82,11 +82,11 @@ The merge costs, and the plan answers:
 | Q10 | **Rules are the only hierarchy (the type rank, Q31, is an input they read).** Requirement types are an ordered vocabulary; every "X must trace to Y" relationship, including multi-level chains, is a rule; the hierarchy screen is a tree derived from rules. No separate hierarchy model | User |
 | Q10b | Requirement types become their own sub-component `requirement_types`; Module 5 Phase 1 moves here whole. **Narrowed 2026-11-26 (User):** the vocabulary and the type column are core (as Action Types), so no `requirement_types` sub-component exists; Module 5 Phase 1 still moves here whole | User |
 | Q31 | **Requirement types carry a rank (priority)** separate from the list order: lower is higher, equal ranks are peers, null is unranked. It orders lists, exports and report layouts and is an input rules can read (for example a derivation link should not run from a lower-ranked type to a higher-ranked one); rules stay the one enforcement mechanism. Supersedes the part of Q10 that says the order carries no hierarchy meaning. Traceability Manager roles do not manage types (admin gates) | User (2026-11-26) |
-| Q11 | An exception is approved through the Governance approval policy for its type when `approval_policies` is enabled, otherwise through a dedicated approve permission. The requester never approves their own exception. The route stays `APPROVAL_ACTION_ROUTE_EXTRA` (human-only) | User |
+| Q11 | An exception is approved through the Governance approval policy for its type when `approval_policies` is enabled, otherwise through a dedicated approve permission. The requester does not approve their own exception, except an organisation administrator where a separate approver is not required (revised 2026-11-28). The route stays `APPROVAL_ACTION_ROUTE_EXTRA` (human-only) | User |
 | Q12 | Matrices: saved `TraceabilityMatrixDefinition` plus ad hoc views, always generated live | User |
 | Q13 | "Required" with `baseline_policies` off is allowed and labelled "not enforced" everywhere; nothing silently pretends to block | User |
 | Q14 | Nested-project fallback (the `resolve_effective_action_types` pattern) **and** organisation-level defaults that a project can hide and restore, for policies, rules, matrix definitions and requirement types. **Refined by Q24:** the organisation tier is chosen per table | User |
-| Q15 | A traceability exception is a registered artefact type (`TEX-nnn`) | User |
+| Q15 | A traceability exception is a registered artefact type (`TEX-nnn`). It takes no links (added 2026-11-28) | User |
 | Q16 | Users and groups on parity: review owners and exception requesters/approvers use the shared principal picker; approval policies name roles, satisfied by a user or a group holding the role | User |
 | Q17 | MCP: write-enabled configuration for both halves (needs `MCP_WRITES_ENABLED` and the caller's RBAC); no tool can execute an approval or finalise a blocked transition | User |
 | Q18 | [Issue #41](https://github.com/ballardr/reqtrackmanager/issues/41) (a requirement traceability matrix, "derived from" / "source of" columns in the requirements report, and orphan detection in the requirements list) is covered explicitly in Phases 15 and 16. These need no rules: they belong to `traceability_matrices` and work with `traceability_rules` off. "Orphan" means a record with no links of any kind; "no required link" is a separate rule-based status (Phase 12). The list filter and the link columns reach the core Requirements list and export through a generic extension point, never a Requirements-specific edit | Agent (scope from the issue) |
@@ -921,7 +921,7 @@ requirement-specific case.
 - Tests: `modules/traceability/tests/test_traceability_status.py`; stories for the policy fields, Links panel and
   activity; Playwright `traceability-enforcement.spec.ts`.
 
-## Phase 13 — Traceability exceptions (`traceability_exceptions`)
+## Phase 13 — Traceability exceptions (`traceability_exceptions`) (done 2026-11-28)
 
 **Scope** (§22): `TraceabilityException` as a registered artefact type (Q15): record, rule,
 reason, requested by, approved by, expiry or review date (a calendar date), evidence.
@@ -929,6 +929,25 @@ Approval per Q11. Every surface showing traceability status distinguishes "satis
 rule" from "has an approved exception".
 
 **Why:** an approved waiver must never look like real coverage.
+
+**Built (account in `docs/decisions.md`, "Module 7 Phase 13"; contract in `docs/modules.md` §4l17):**
+
+- `modules/traceability/`: `exceptions.py` (writes, rights, the one transition function, notifications), `exception_cover.py`
+  (when an exception covers), `exception_views.py`, `exception_router.py`, `exception_schemas.py`, `exception_records.py`
+  (summary, search, record table, report fields, attachments, scaling probe), `exception_governance.py` (lifecycle, review
+  adapter, health), `exception_bundle.py`, `exception_perf.py` (ratio 0.02, profiles version 17), `labels.py`; four tables in
+  unreleased migration `0210` (edited in place).
+- **Status.** `excepted` on rules, records, list counts and evaluation counts, with the covering exception named; the baseline
+  check passes on it.
+- **Generic:** `LifecycleDefinition.self_approval_org_admins_only`, `enforce_approval(submitter=...)`,
+  `ModuleDefinition.not_linkable` (exceptions take no links, **Decided by: User**); `services.template_reset.keeps_history`.
+- **Screens (Decided by: User).** Read-only `ProjectExceptionsPage` and `ExceptionDetailPage`, a navigation entry,
+  `artefactPaths`.
+- **Answers (Decided by: User):** an enforced profile's rule takes organisation-level approval only; separate expiry and review
+  dates; an edited rule keeps its exceptions, flagged; an organisation administrator may approve their own, with a comment,
+  unless a separate approver is required.
+- Not built here, by design: MCP tools (Phase 15), request, edit and approval screens and the excepted state on status views
+  (Phase 16), docs website pages (Phase 17), perf scenarios (Phase 18).
 
 ## Phase 14 — Cross-project traceability (`cross_project_traceability`)
 
@@ -975,6 +994,15 @@ the decision). Approving an exception is excluded (`APPROVAL_ACTION_ROUTE_EXTRA`
 `mcp_guidance.md` and regenerate the module tools reference.
 
 ## Phase 16 — Traceability frontend UI
+
+**Left by Phase 13:** the exception list and record page read only. Add the request form (reachable from the excepted
+record's page, through the Exceptions card below; exceptions take no links, so never through the Links panel), edit,
+approve, reject, revoke, withdraw, resubmit and review controls (`actions` on the record response), the lifecycle Promote
+move, and the `excepted` state wherever a status is shown.
+
+**Exceptions on the record (Decided by: User, 2026-11-28):** a record's page shows an Exceptions card listing the exceptions
+raised against it and whether each covers. The exception names its record through its own field, not a link, so without the
+card the record's page shows nothing of it (the list endpoint already filters by `record_id`).
 
 Rule configuration (the three §19 presets as a quick-setup path
 over the full editor), the hierarchy tree derived from rules, per-record status with
@@ -1055,8 +1083,35 @@ Lifecycle"). It covers the whole repository, not only this module's files.
 - Record each outcome in `docs/decisions.md`, and update the SOC 2 policies' Known Gaps and the control matrix where a gap
   closes.
 
+**Flake hunt review** (**Decided by: User**): review the scheduled "Flake hunt" GitHub Actions runs
+(`.github/workflows/flake-hunt.yml`: every story, shuffled, with every CPU busy) and fix each failure.
+
+- Review every failed run to date, not only the examples below:
+  `gh run list --workflow=flake-hunt.yml --status=failure`, then `gh run view <run id> --log-failed`.
+- Known failures (the run id is also the shuffle seed):
+
+  | Run | Shard | Story file (under `frontend/src/`) | Failing stories |
+  |---|---|---|---|
+  | [45805113426](https://github.com/ballardr/reqtrackmanager/actions/runs/45805113426) | 1 | `components/ReportLayoutFormModal.stories.tsx` | Folder Is Chosen From The Tree And Saved; Editing Changes The Folder; Folder Shows As A Value And Opens A Popover To Move |
+  | 45805113426 | 2 | `modules/architecture/StateMachineEditorPage.stories.tsx` | Exporting Png Draws The Servers Svg And Copying Puts The Mermaid |
+  | 45805113426 | 3 | `modules/compliance/ComplianceStatusPage.stories.tsx` | Failed Load Offers Retry |
+  | [45985382272](https://github.com/ballardr/reqtrackmanager/actions/runs/45985382272) | 1 | `components/FormFields.stories.tsx` | Simple Text Areas Have No Visual Tab And Math Ones Do |
+  | 45985382272 | 1 | `modules/architecture/DiagramEditorPage.stories.tsx` | Exporting Png Draws The Servers Svg |
+
+- Reproduce in `frontend/` under CPU load with
+  `npx vitest run --project=storybook --shard=<shard>/3 --sequence.shuffle --sequence.seed=<run id>`
+  (`docs/development.md`, "Finding flaky tests").
+- Fix each at its root cause, in the story or in the component it exposes: wait for the state the story needs, never a
+  retry, a longer timeout or a skip. Look for the same shape in other stories (the two PNG export stories suggest a shared
+  one).
+
+**Why / risk / outcome:** the flake hunt runs apart from pull requests, so its failures block nothing and accumulate
+unread. Each is a timing defect in a story or a component that will later fail an unrelated pull request. Reviewing them
+before the plan closes leaves the shuffled, loaded suite passing.
+
 **Exit criteria:** no open alert or scan finding that is not fixed or recorded as a documented false positive with its reason;
-the decisions entry lists what was found and what was done.
+every flake hunt failure is fixed and passes under its original seed and shard with the CPUs loaded; the decisions entry
+lists what was found and what was done.
 
 ## Phase 20 — Local CI test review
 

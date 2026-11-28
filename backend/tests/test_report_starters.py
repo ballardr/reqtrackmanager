@@ -7,7 +7,7 @@ own organisation.
 from __future__ import annotations
 
 import re
-from datetime import date, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -200,7 +200,7 @@ def test_the_review_package_prints_each_open_question_once_under_one_heading(cli
     world = World(client, admin_token, "Starter Questions", context_strategy=True, keep_starter_layouts=True)
     project = world.project("Questions")
     cs = f"/api/v1/projects/{project['id']}/modules/context_strategy/open-questions"
-    past = (date.today() - timedelta(days=400)).isoformat()
+    past = (datetime.now(UTC).date() - timedelta(days=400)).isoformat()
     for body in ({"question": "Cut-over date", "due_date": past}, {"question": "Keep Q2 pricing"}):
         assert client.post(cs, json=body, headers=auth_headers(world.token)).status_code == 201
 

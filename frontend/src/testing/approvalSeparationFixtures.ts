@@ -14,7 +14,7 @@ import type {
 export function buildProjectSeparation(overrides: Partial<ProjectSeparation> = {}): ProjectSeparation {
   return {
     artefact_type: "change_request", label: "Change request", module_key: "", module_name: "", own: null, chosen: false,
-    source: "default", required: false, exempt: false, separate: false, ...overrides,
+    source: "default", required: false, exempt: false, separate: false, self_approval_org_admins_only: false, ...overrides,
   };
 }
 
@@ -25,7 +25,7 @@ export function buildProjectSeparations(types: ProjectSeparation[], overrides: P
 export function buildOrgSeparation(overrides: Partial<OrgSeparation> = {}): OrgSeparation {
   return {
     artefact_type: "change_request", label: "Change request", module_key: "", module_name: "", required: false,
-    exemptions: [], ...overrides,
+    exemptions: [], self_approval_org_admins_only: false, ...overrides,
   };
 }
 

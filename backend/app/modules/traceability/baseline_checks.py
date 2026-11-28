@@ -24,7 +24,8 @@ Design decisions:
   type that gains both needs its own entry here (`backend/tests/test_governance_baseline_checks.py` fails until it has).
 - "Required approvals" does not judge a person's approval of a record: it is the approval being asked for.
 - A rule met only by carried-over links fails like an unmet one (`rule_evaluation`); a rule that cannot be evaluated fails
-  nothing, and the status view reports it. A failure names the rule and what is missing, never another record.
+  nothing, and the status view reports it. A rule an approved exception covers fails nothing. A failure names the rule and
+  what is missing, never another record.
 - A check only reads and never commits.
 
 Dependencies: `baseline_policy` (the fields to require), `modules.registry` (record tables), `services.approval_policy`
@@ -188,8 +189,8 @@ def check_traceability_rules(
         record_ids: The records by type.
 
     Returns:
-        One failure per record and Required rule it does not meet with links a person authored or confirmed; empty when
-        every record meets every rule that applies to it.
+        One failure per record and Required rule it does not meet with links a person authored or confirmed and no approved
+        exception covers; empty when every record meets, or is excepted from, every rule that applies to it.
     """
     project = db.get(Project, context.project_id)
     if project is None:
@@ -201,7 +202,7 @@ def check_traceability_rules(
             (record_id, rule)
             for record_id, status in sorted(found.records.items())
             for rule in status.rules
-            if rule.state != TraceabilityState.MET
+            if rule.state not in (TraceabilityState.MET, TraceabilityState.EXCEPTED)
         ]
         if not failing:
             continue

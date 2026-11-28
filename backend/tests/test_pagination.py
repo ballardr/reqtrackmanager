@@ -4,7 +4,7 @@ my-reviews-due list endpoints. Omitting both must still return every match
 (C-G-05: no artificial limit is ever imposed unless the caller asks for a
 page)."""
 
-from datetime import date, timedelta
+from datetime import UTC, datetime, timedelta
 
 from tests.conftest import auth_headers, create_component_and_category, create_org_user, create_project, login
 
@@ -242,7 +242,7 @@ def test_my_reviews_due_paginates_reports_total_and_includes_project_name(client
             f"/api/v1/projects/{project['id']}/requirements",
             json={
                 "name": f"Req {i}", "component_id": component_id, "category_id": category_id,
-                "review_date": str(date.today() - timedelta(days=1)), "reviewer": {"type": "user", "id": reviewer_id},
+                "review_date": str(datetime.now(UTC).date() - timedelta(days=1)), "reviewer": {"type": "user", "id": reviewer_id},
             },
             headers=auth_headers(admin_token),
         )

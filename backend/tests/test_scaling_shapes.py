@@ -21,6 +21,7 @@ from app.modules.registry import (
     get_all_registered_artefact_types,
     get_module_registry,
     get_no_scaling_probe_types,
+    get_not_linkable_types,
     get_scaling_probes,
 )
 from tests.conftest import auth_headers, create_org_admin_in, create_project
@@ -185,16 +186,18 @@ def _growth(artefact_type: str, client, admin_token: str) -> dict[str, tuple[int
 
     ids = probe.create(api, project_id, 0, SMALL)
     first = ids[0]
-    option = _first_link_option(api, project_id, artefact_type, first)
-    assert option is not None, f"{artefact_type} has no link type usable to a requirement, so the link graph cannot be probed"
-    _link_requirements(api, project_id, artefact_type, first, option, 0, SMALL)
+    linkable = artefact_type not in get_not_linkable_types()
+    option = _first_link_option(api, project_id, artefact_type, first) if linkable else None
+    if linkable:
+        assert option is not None, f"{artefact_type} has no link type usable to a requirement, so the link graph cannot be probed"
+        _link_requirements(api, project_id, artefact_type, first, option, 0, SMALL)
     if probe.has_comments:
         for n in range(COMMENTS_SMALL):
             api.post(f"{base}/{first}/comments", {"body": f"comment {n}"})
     graph = f"/projects/{project_id}/artefacts/{artefact_type}/{first}/link-graph?depth=1"
     activity = f"/projects/{project_id}/artefacts/{artefact_type}/{first}/activity?limit=25"
     small = {
-        "list": _measure(api, base), "links": _measure(api, graph), "activity": _measure(api, activity),
+        "list": _measure(api, base), **({"links": _measure(api, graph)} if linkable else {}), "activity": _measure(api, activity),
         "export": _measure_export(client, token, project_id),
         **_measure_record_table(client, token, project_id, artefact_type),
     }
@@ -204,12 +207,13 @@ def _growth(artefact_type: str, client, admin_token: str) -> dict[str, tuple[int
         small["comments"] = _measure(api, f"{base}/{first}/comments")
 
     ids += probe.create(api, project_id, SMALL, LARGE - SMALL)
-    _link_requirements(api, project_id, artefact_type, first, option, SMALL, LARGE - SMALL)
+    if option is not None:
+        _link_requirements(api, project_id, artefact_type, first, option, SMALL, LARGE - SMALL)
     if probe.has_comments:
         for n in range(COMMENTS_SMALL, COMMENTS_LARGE):
             api.post(f"{base}/{first}/comments", {"body": f"comment {n}"})
     large = {
-        "list": _measure(api, base), "links": _measure(api, graph), "activity": _measure(api, activity),
+        "list": _measure(api, base), **({"links": _measure(api, graph)} if linkable else {}), "activity": _measure(api, activity),
         "export": _measure_export(client, token, project_id),
         **_measure_record_table(client, token, project_id, artefact_type),
     }

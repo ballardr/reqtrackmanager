@@ -26,6 +26,10 @@ Design decisions:
 - A project's stored choice is kept when the organisation requires the rule, so removing the requirement gives the
   project's own choice back. Resolution never loops per record.
 - A record the organisation owns (no project) follows the organisation's requirement alone.
+- A type whose lifecycle sets `self_approval_org_admins_only` narrows "the creator may approve" to a creator who is an
+  organisation administrator, who always comments. The settings apply to it as to any type.
+- A caller whose type counts more people than the creator as having submitted a record (a named requester) says so
+  with `submitter`; such a person is held to the same rule as the creator.
 - Turning the rule back on never undoes past approvals; the mark describes the latest approval only.
 
 Dependencies: `modules.registry` (gates and labels), `services.lifecycles` (module availability),
@@ -44,6 +48,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.models.enums import OrgRole
 from app.models.lifecycle import (
     OrganizationApprovalSeparationExemption,
     OrganizationApprovalSeparationRequirement,
@@ -64,6 +69,7 @@ from app.modules.registry import (
 from app.services.audit import log_event
 from app.services.lifecycles import enabled_for_organization
 from app.services.project_hierarchy import get_project_chain_ids
+from app.services.rbac import get_effective_org_roles
 
 AUDIT_ENTITY_TYPE = "approval_separation"
 SELF_APPROVED_ACTION = "self_approved"
@@ -81,11 +87,13 @@ class ApprovalGate:
         artefact_type: The registered record type.
         label: Its singular display name.
         module_key: The module that registered it, `""` for a core type.
+        org_admins_only: Only an organisation administrator may approve a record they submitted.
     """
 
     artefact_type: str
     label: str
     module_key: str
+    org_admins_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -131,7 +139,10 @@ def approval_gates() -> dict[str, ApprovalGate]:
     gates = {t: ApprovalGate(t, get_artefact_type_label(t), "") for t in CORE_GATES}
     for artefact_type, (module_key, definition) in get_lifecycles().items():
         if definition.gated:
-            gates.setdefault(artefact_type, ApprovalGate(artefact_type, definition.label, module_key))
+            gates.setdefault(
+                artefact_type,
+                ApprovalGate(artefact_type, definition.label, module_key, definition.self_approval_org_admins_only),
+            )
     for artefact_type, (module_key, declared) in get_module_approval_gates().items():
         gates.setdefault(artefact_type, ApprovalGate(artefact_type, declared.label, module_key))
     return gates
@@ -306,6 +317,7 @@ def _clear_mark(db: Session, artefact_type: str, record_id: uuid.UUID) -> None:
 def enforce_approval(
     db: Session, *, user: User, artefact_type: str, record_id: uuid.UUID, creator_id: uuid.UUID,
     organization_id: uuid.UUID, project_id: uuid.UUID | None, comment: str | None, check_record: bool = True,
+    submitter: bool = False,
 ) -> bool:
     """Applies the rules of the moment `user` approves a record; call after the approval permission is checked and
     before the record changes. Nothing is committed.
@@ -328,30 +340,38 @@ def enforce_approval(
         comment: The approver's comment, when the approval takes one.
         check_record: Whether to run the approval checks now. `False` for a stage baseline, which runs its own checks over
             everything it approves, and for a path that changes the record as it approves it and runs them afterwards.
+        submitter: The person counts as having submitted the record although they did not create it.
 
     Returns:
         Whether this approval was a self-approval.
 
     Raises:
-        HTTPException: 403 when a separate approver is required; 400 when a deliberate self-approval has no comment; 409
+        HTTPException: 403 when a separate approver is required, or the type limits self-approval to organisation
+            administrators and the person is not one; 400 when a deliberate or restricted self-approval has no comment; 409
             with `{message, failures[]}` when an approval check fails.
     """
-    if user.id != creator_id:
+    if user.id != creator_id and not submitter:
         if check_record:
             _run_approval_checks(db, user, artefact_type, record_id, project_id)
         _clear_mark(db, artefact_type, record_id)
         return False
     resolved = resolve_separation(db, artefact_type=artefact_type, organization_id=organization_id, project_id=project_id)
     label = resolved.gate.label.lower()
+    did = "created" if user.id == creator_id else "requested"
+    if resolved.gate.org_admins_only and not _is_org_admin(db, user.id, organization_id):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"Only an organisation administrator may approve a {label} that they {did} themselves.",
+        )
     if resolved.separate:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
-            f"A different person must approve this {label}: a separate approver is required and you created it.",
+            f"A different person must approve this {label}: a separate approver is required and you {did} it.",
         )
-    if resolved.deliberate and not (comment or "").strip():
+    if (resolved.deliberate or resolved.gate.org_admins_only) and not (comment or "").strip():
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            f"A comment is required to approve a {label} that you created yourself.",
+            f"A comment is required to approve a {label} that you {did} yourself.",
         )
     if check_record:
         _run_approval_checks(db, user, artefact_type, record_id, project_id)
@@ -380,7 +400,7 @@ def _run_approval_checks(db: Session, user: User, artefact_type: str, record_id:
 
 
 def enforce_record_approval(
-    db: Session, *, user: User, artefact_type: str, record: object, comment: str | None,
+    db: Session, *, user: User, artefact_type: str, record: object, comment: str | None, submitter: bool = False,
 ) -> bool:
     """`enforce_approval` for a record object with `id`, `creator_id`, `project_id` (and `organization_id` when the
     organisation owns it), so a caller need not resolve the organisation itself.
@@ -402,8 +422,27 @@ def enforce_record_approval(
     return enforce_approval(
         db, user=user, artefact_type=artefact_type, record_id=record.id,  # type: ignore[attr-defined]
         creator_id=record.creator_id,  # type: ignore[attr-defined]
-        organization_id=organization_id, project_id=project_id, comment=comment,
+        organization_id=organization_id, project_id=project_id, comment=comment, submitter=submitter,
     )
+
+
+def _is_org_admin(db: Session, user_id: uuid.UUID, organization_id: uuid.UUID) -> bool:
+    """Whether the person is an administrator of the organisation, directly or through a group."""
+    return OrgRole.ORG_ADMIN in get_effective_org_roles(db, user_id, organization_id)
+
+
+def may_self_approve(
+    db: Session, *, user_id: uuid.UUID, artefact_type: str, organization_id: uuid.UUID, project_id: uuid.UUID | None,
+) -> bool:
+    """Whether a person who submitted a record of the type may approve it (permission to approve is checked apart).
+
+    Raises:
+        HTTPException: 404 for a type without an approval gate.
+    """
+    resolved = resolve_separation(db, artefact_type=artefact_type, organization_id=organization_id, project_id=project_id)
+    if resolved.separate:
+        return False
+    return not resolved.gate.org_admins_only or _is_org_admin(db, user_id, organization_id)
 
 
 def approval_status(
@@ -414,15 +453,15 @@ def approval_status(
 
     Returns:
         `{"self_approved": bool, "approved_by": user id or None, "approved_at": datetime or None,
-        "needs_other_approver": bool}`; the last is true when `user` created the record and a separate approver is
-        required, so the page can explain why approval is unavailable to them.
+        "needs_other_approver": bool}`; the last is true when `user` created the record and may not approve it, so the
+        page can explain why approval is unavailable to them.
     """
     mark = db.scalar(select(RecordSelfApproval).where(
         RecordSelfApproval.artefact_type == artefact_type, RecordSelfApproval.record_id == record_id,
     ))
-    needs_other = user.id == creator_id and resolve_separation(
-        db, artefact_type=artefact_type, organization_id=organization_id, project_id=project_id,
-    ).separate
+    needs_other = user.id == creator_id and not may_self_approve(
+        db, user_id=user.id, artefact_type=artefact_type, organization_id=organization_id, project_id=project_id,
+    )
     return {
         "self_approved": mark is not None, "approved_by": None if mark is None else mark.approved_by,
         "approved_at": None if mark is None else mark.approved_at, "needs_other_approver": needs_other,

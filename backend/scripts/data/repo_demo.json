@@ -11029,8 +11029,8 @@
   },
   {
    "policy": "access-control-policy",
-   "title": "Approval separation is off unless configured, and does not cover every approval",
-   "statement": "With the default, a person holding an approval permission may approve a record they created (marked Self-approved, audited); an organisation that needs segregation of duties must require a separate approver for the record types concerned. The setting does not yet cover the compliance assessment approval or the Pain Point acceptance step, which are not registered as approval steps, and it compares user accounts only (the creator of a record is always a user). A baseline that approves several requirements applies the rule to each and is refused as a whole when one was created by the person baselining and a separate approver is required.",
+   "title": "Approval separation is off unless configured",
+   "statement": "With the default, a person holding an approval permission may approve a record they created (marked Self-approved, audited); an organisation that needs segregation of duties must require a separate approver for the record types concerned. For a traceability exception the default lets only an organisation administrator approve one they submitted, which includes an exception to a rule the organisation enforces; requiring a separate approver for the type removes that. The setting covers the compliance assessment approval (the assessor is its creator; a rejection is not an approval and is not separated) and the Pain Point acceptance (the submitter is its creator; triage, rejection, duplicate marking, addressing and closing are not approvals), and it compares user accounts only (the creator of a record is always a user). A baseline that approves several requirements applies the rule to each and is refused as a whole when one was created by the person baselining and a separate approver is required.",
    "type": "Security"
   },
   {

@@ -6,7 +6,8 @@ Create Date: 2026-11-26
 
 Organisation policy sets with their targets, exemptions and per-project choices, the policy tables a profile or a
 project owns (including the stage workflow a profile requires), and governance health's defaults, settings and
-snapshots, and the traceability rules a profile or a project owns. Nothing is seeded: with no profile every project's
+snapshots, the traceability rules a profile or a project owns, and a project's traceability exceptions with their
+comments and evidence files. Nothing is seeded: with no profile every project's
 governance is unchanged. Guarded so a database built from
 the current models passes.
 """
@@ -315,8 +316,108 @@ def upgrade() -> None:
     )
     op.execute("CREATE INDEX IF NOT EXISTS ix_governance_health_snapshots_project_id ON governance_health_snapshots (project_id)")
 
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS traceability_exceptions (
+            id UUID PRIMARY KEY,
+            project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            unique_code VARCHAR(64) NOT NULL,
+            creator_id UUID NOT NULL REFERENCES users(id),
+            is_archived BOOLEAN NOT NULL DEFAULT FALSE,
+            archived_at TIMESTAMPTZ,
+            archived_by UUID REFERENCES users(id),
+            title VARCHAR(300) NOT NULL,
+            artefact_type VARCHAR(64) NOT NULL,
+            artefact_id UUID NOT NULL,
+            rule_id UUID REFERENCES governance_traceability_rules(id) ON DELETE SET NULL,
+            rule_name VARCHAR(200) NOT NULL,
+            reason TEXT NOT NULL DEFAULT '',
+            requester_type VARCHAR(20) NOT NULL,
+            requester_id UUID NOT NULL,
+            approver_type VARCHAR(20),
+            approver_id UUID,
+            status VARCHAR(16) NOT NULL,
+            expires_on DATE,
+            review_date DATE,
+            decided_by_id UUID REFERENCES users(id),
+            decided_at TIMESTAMPTZ,
+            decision_comment TEXT NOT NULL DEFAULT '',
+            approved_fingerprint VARCHAR(64),
+            org_approved BOOLEAN NOT NULL DEFAULT FALSE,
+            review_due_notified_for DATE,
+            review_overdue_notified_for DATE,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL,
+            CONSTRAINT uq_traceability_exceptions_project_code UNIQUE (project_id, unique_code),
+            CONSTRAINT ck_requester_principal CHECK (requester_type IN ('user', 'org_group', 'project_group')),
+            CONSTRAINT ck_approver_principal CHECK (
+                (approver_type IS NULL OR approver_type IN ('user', 'org_group', 'project_group'))
+                AND (approver_type IS NULL) = (approver_id IS NULL)
+            )
+        )
+        """
+    )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_traceability_exceptions_project_id ON traceability_exceptions (project_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_traceability_exceptions_rule_id ON traceability_exceptions (rule_id)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_traceability_exceptions_record "
+        "ON traceability_exceptions (project_id, artefact_type, artefact_id)"
+    )
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS traceability_exception_comments (
+            id UUID PRIMARY KEY,
+            exception_id UUID NOT NULL REFERENCES traceability_exceptions(id) ON DELETE CASCADE,
+            author_id UUID NOT NULL REFERENCES users(id),
+            body TEXT NOT NULL,
+            edited_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL
+        )
+        """
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_traceability_exception_comments_exception_id "
+        "ON traceability_exception_comments (exception_id)"
+    )
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS traceability_exception_comment_files (
+            id UUID PRIMARY KEY,
+            comment_id UUID NOT NULL REFERENCES traceability_exception_comments(id) ON DELETE CASCADE,
+            file_id UUID NOT NULL REFERENCES file_assets(id) ON DELETE CASCADE,
+            uploaded_by UUID NOT NULL REFERENCES users(id),
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL
+        )
+        """
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_traceability_exception_comment_files_comment_id "
+        "ON traceability_exception_comment_files (comment_id)"
+    )
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS traceability_exception_files (
+            id UUID PRIMARY KEY,
+            exception_id UUID NOT NULL REFERENCES traceability_exceptions(id) ON DELETE CASCADE,
+            file_id UUID NOT NULL REFERENCES file_assets(id) ON DELETE CASCADE,
+            linked_by UUID NOT NULL REFERENCES users(id),
+            created_at TIMESTAMPTZ NOT NULL,
+            CONSTRAINT uq_traceability_exception_files UNIQUE (exception_id, file_id)
+        )
+        """
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_traceability_exception_files_exception_id ON traceability_exception_files (exception_id)"
+    )
+
 
 def downgrade() -> None:
+    op.execute("DROP TABLE IF EXISTS traceability_exception_files")
+    op.execute("DROP TABLE IF EXISTS traceability_exception_comment_files")
+    op.execute("DROP TABLE IF EXISTS traceability_exception_comments")
+    op.execute("DROP TABLE IF EXISTS traceability_exceptions")
     op.execute("DROP TABLE IF EXISTS governance_traceability_rules")
     op.execute("DROP TABLE IF EXISTS governance_health_snapshots")
     op.execute("DROP TABLE IF EXISTS governance_health_settings")

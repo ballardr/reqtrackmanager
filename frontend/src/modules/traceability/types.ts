@@ -1,13 +1,15 @@
 /**
  * Module: modules/traceability/types
  *
- * TypeScript shapes and enum label maps of the Governance half of the Traceability & Governance module, mirroring
- * `backend/app/modules/traceability/schemas.py` and `enums.py` field for field. They live in the module's directory, not
+ * TypeScript shapes and enum label maps of the Traceability & Governance module (Governance policy and health, and
+ * traceability exceptions), mirroring `backend/app/modules/traceability/schemas.py`, `exception_schemas.py` and
+ * `enums.py` field for field. They live in the module's directory, not
  * `frontend/src/api/types.ts`, because a module's enums and label maps are its own display concern.
  *
  * Every enum value shown to a person goes through a label map here (docs/ux-style-guide.md, Principle 12).
  */
-import type { BadgeTone, Principal, PrincipalRef } from "../../api/types";
+import type { ProjectScopedRow } from "../../api/projectScope";
+import type { BadgeTone, FileAsset, Principal, PrincipalRef } from "../../api/types";
 
 // --- Profiles ---------------------------------------------------------------------------------------------------
 
@@ -520,4 +522,99 @@ export function healthIntervalLabel(hours: number): string {
   if (hours < 24) return hours === 1 ? "Every hour" : `Every ${hours} hours`;
   const days = hours / 24;
   return days === 1 ? "Every day" : `Every ${days} days`;
+}
+
+// --- Traceability exceptions ------------------------------------------------------------------------------------
+
+export type ExceptionStatus = "requested" | "approved" | "rejected" | "withdrawn" | "revoked";
+
+export const EXCEPTION_STATUS_LABEL: Record<ExceptionStatus, string> = {
+  requested: "Requested",
+  approved: "Approved",
+  rejected: "Rejected",
+  withdrawn: "Withdrawn",
+  revoked: "Revoked",
+};
+
+export const EXCEPTION_STATUS_DESCRIPTION: Record<ExceptionStatus, string> = {
+  requested: "Awaiting a decision. The record is not yet excepted.",
+  approved: "Approved. The record is excepted from the rule until the exception expires or is revoked.",
+  rejected: "Refused. It can be requested again.",
+  withdrawn: "Withdrawn by the requester. It can be requested again.",
+  revoked: "The approval was withdrawn. It can be requested again.",
+};
+
+export const EXCEPTION_STATUS_TONE: Record<ExceptionStatus, BadgeTone> = {
+  requested: "info",
+  approved: "accent",
+  rejected: "danger",
+  withdrawn: "muted",
+  revoked: "danger",
+};
+
+/** Why an exception does not cover its rule for its record. */
+export type ExceptionNoCoverReason = "not_approved" | "archived" | "expired" | "rule_removed" | "needs_organisation_approval";
+
+export const EXCEPTION_NO_COVER_LABEL: Record<ExceptionNoCoverReason, string> = {
+  not_approved: "Not approved",
+  archived: "Archived",
+  expired: "Expired",
+  rule_removed: "Rule no longer applies",
+  needs_organisation_approval: "Needs organisation approval",
+};
+
+export interface ExceptionRecordRef {
+  artefact_type: string;
+  artefact_type_label: string;
+  id: string;
+  code: string;
+  label: string;
+  removed: boolean;
+}
+
+export interface TraceabilityException extends ProjectScopedRow {
+  id: string;
+  project_id: string;
+  unique_code: string;
+  title: string;
+  status: ExceptionStatus;
+  record: ExceptionRecordRef;
+  rule_id: string | null;
+  rule_name: string;
+  reason: string;
+  requester: Principal | null;
+  approver: Principal | null;
+  expires_on: string | null;
+  review_date: string | null;
+  creator_id: string;
+  decided_by_id: string | null;
+  decided_by_name: string | null;
+  decided_at: string | null;
+  decision_comment: string;
+  covers: boolean;
+  no_cover_reason: ExceptionNoCoverReason | null;
+  expired: boolean;
+  rule_changed: boolean;
+  needs_organisation_approval: boolean;
+  is_archived: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExceptionComment {
+  id: string;
+  exception_id: string;
+  author_id: string;
+  author_display_name: string;
+  body: string;
+  created_at: string;
+  edited_at: string | null;
+  attachments: FileAsset[];
+}
+
+/** Whether an exception covers its record, in words: "Covering", or why it does not. */
+export function exceptionCoverLabel(exception: Pick<TraceabilityException, "covers" | "no_cover_reason" | "record">): string {
+  if (exception.covers) return "Covering";
+  if (exception.no_cover_reason) return EXCEPTION_NO_COVER_LABEL[exception.no_cover_reason];
+  return "Record removed";
 }

@@ -188,6 +188,7 @@ class ProjectSeparationOut(BaseModel):
         required: Whether the organisation requires a separate approver and binds this project.
         exempt: Whether the organisation requires one but this project is exempt.
         separate: Whether a person other than the creator must approve now.
+        self_approval_org_admins_only: Only an organisation administrator may approve a record of the type they submitted.
     """
 
     artefact_type: str
@@ -200,6 +201,7 @@ class ProjectSeparationOut(BaseModel):
     required: bool
     exempt: bool
     separate: bool
+    self_approval_org_admins_only: bool
 
 
 class ProjectSeparationsOut(BaseModel):
@@ -227,6 +229,7 @@ class OrgSeparationOut(BaseModel):
         module_name: That module's display name, empty for a core type.
         required: Whether a separate approver is required in every project that is not exempt.
         exemptions: The projects the requirement does not bind.
+        self_approval_org_admins_only: Only an organisation administrator may approve a record of the type they submitted.
     """
 
     artefact_type: str
@@ -235,6 +238,7 @@ class OrgSeparationOut(BaseModel):
     module_name: str
     required: bool
     exemptions: list[ExemptionOut]
+    self_approval_org_admins_only: bool
 
 
 class OrgSeparationSet(BaseModel):

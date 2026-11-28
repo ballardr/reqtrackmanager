@@ -12,6 +12,7 @@ blocked, reassigned, cleared, open proposals rewritten and decided ones left as 
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy import select, text
 
@@ -505,9 +506,9 @@ def _put_requirement(client, token, project_id, requirement, **changes):
 
 
 def _yesterday() -> str:
-    from datetime import date, timedelta
+    from datetime import timedelta
 
-    return (date.today() - timedelta(days=1)).isoformat()
+    return (datetime.now(UTC).date() - timedelta(days=1)).isoformat()
 
 
 def test_a_requirement_defaults_its_owner_to_the_creator_and_takes_each_principal_kind(client, admin_token, org_id):

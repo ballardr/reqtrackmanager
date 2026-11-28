@@ -2,14 +2,17 @@ import { createElement, type ReactNode } from "react";
 
 import { CollapsibleSection } from "../../components/CollapsibleSection";
 import type { TierAModuleDefinition } from "../types";
+import { ExceptionDetailPage } from "./ExceptionDetailPage";
 import { GovernanceHealthPage } from "./GovernanceHealthPage";
 import { OrgHealthDefaultsPanel } from "./OrgHealthDefaultsPanel";
 import { OrgProfilesPanel } from "./OrgProfilesPanel";
 import { ProjectApprovalPanel } from "./ProjectApprovalPanel";
 import { ProjectBaselinePanel } from "./ProjectBaselinePanel";
+import { ProjectExceptionsPage } from "./ProjectExceptionsPage";
 import { ProjectHealthSettingsPanel } from "./ProjectHealthSettingsPanel";
 import { ProjectProfilesPanel } from "./ProjectProfilesPanel";
 import { ProjectReviewPanel } from "./ProjectReviewPanel";
+import { EXCEPTION_STATUS_LABEL } from "./types";
 
 /**
  * Module: modules/traceability/module
@@ -19,7 +22,10 @@ import { ProjectReviewPanel } from "./ProjectReviewPanel";
  * file; no core file is edited to add it.
  *
  * - `routes` (project-scoped, gated on the project's enabled modules): the Governance health page
- *   (`.../modules/traceability/health`, the path the backend `frontend_manifest` nav entry points at).
+ *   (`.../modules/traceability/health`) and the traceability exception list and record
+ *   (`.../modules/traceability/exceptions[/:exceptionId]`), the paths the backend `frontend_manifest` nav entries point at.
+ * - `artefactPaths`, `artefactListPaths`, `artefactStatusLabels`, `artefactInactiveStatuses`: where a link, search result
+ *   or notification about a `traceability_exception` opens and how its status reads.
  * - `orgAdminSections`: the organisation's governance profiles (with each profile's lifecycle, approval, review and
  *   baseline policy) and its default way of keeping governance health.
  * - `projectAdminSections`: the profiles that reach the project with its choices, the project's approval, review and
@@ -47,8 +53,18 @@ function inCard(key: string, title: string, panel: ReactNode): ReactNode {
 
 export const moduleDefinition: TierAModuleDefinition = {
   key: "traceability",
+  artefactPaths: {
+    traceability_exception: (projectId, id) => `/projects/${projectId}/modules/traceability/exceptions/${id}`,
+  },
+  artefactListPaths: {
+    traceability_exception: (projectId) => `/projects/${projectId}/modules/traceability/exceptions`,
+  },
+  artefactStatusLabels: { traceability_exception: EXCEPTION_STATUS_LABEL },
+  artefactInactiveStatuses: { traceability_exception: ["rejected", "withdrawn", "revoked"] },
   routes: [
     { path: "/projects/:projectId/modules/traceability/health", element: createElement(GovernanceHealthPage) },
+    { path: "/projects/:projectId/modules/traceability/exceptions", element: createElement(ProjectExceptionsPage) },
+    { path: "/projects/:projectId/modules/traceability/exceptions/:exceptionId", element: createElement(ExceptionDetailPage) },
   ],
   orgAdminSections: [
     {

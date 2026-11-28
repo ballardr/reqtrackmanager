@@ -428,7 +428,7 @@ def test_reviews_due_excludes_requirements_from_a_disabled_org(client, admin_tok
         f"/api/v1/projects/{project['id']}/requirements",
         json={
             "name": "Due for review", "component_id": component_id, "category_id": category_id,
-            "review_date": str(datetime.date.today() - datetime.timedelta(days=1)),
+            "review_date": str(datetime.datetime.now(datetime.UTC).date() - datetime.timedelta(days=1)),
             "reviewer": {"type": "user", "id": me["id"]},
         },
         headers=auth_headers(org_admin_token),

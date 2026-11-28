@@ -78,7 +78,9 @@ export function OrgApprovalSeparationSection({
       {types.map((type) => (
         <div key={type.artefact_type} className="stack" role="group" aria-label={text.fieldLabel(type.label)}>
           <LabeledSelect
-            label={text.fieldLabel(type.label)} help={strings.help.approvalSeparationOrganization} placeholder={null} autoWidth
+            label={text.fieldLabel(type.label)}
+            help={type.self_approval_org_admins_only ? strings.help.approvalSeparationOrganizationOrgAdmins : strings.help.approvalSeparationOrganization}
+            placeholder={null} autoWidth
             value={type.required ? "required" : "decides"} options={options}
             onChange={(value) => void run(() => api.setRequired(organizationId, type.artefact_type, value === "required"), text.saved)}
           />

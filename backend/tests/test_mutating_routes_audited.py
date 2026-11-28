@@ -18,6 +18,7 @@ MUTATING = {"POST", "PUT", "PATCH", "DELETE"}
 EXEMPT: list[tuple[str, str]] = [
     (r"/(search|preview|parse|format|validate|variables|check|check-organization|example|score-preview|audience-labels|metrics|overview-metrics)$",
      "computes an answer from the request and stores nothing (a POST because the body is too large or too private for a URL)"),
+    (r"/rules/presets/\{key\}$", "returns the rule tree a preset builds and stores nothing"),
     (r"/preview/download$", "returns a document built from the request and stores nothing"),
     (r"/import/preview$", "a preview of an import: nothing is written until the import itself, which is audited"),
     (r"/snippets/\{key\}/apply$", "returns the draft tree with a snippet inserted and stores nothing"),

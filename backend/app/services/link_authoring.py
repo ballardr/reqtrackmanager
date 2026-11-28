@@ -43,9 +43,10 @@ from app.models.requirement import Requirement
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.modules.registry import (
     ArtefactSummary,
-    get_all_registered_artefact_types,
     get_artefact_type_label,
+    get_linkable_artefact_types,
     get_module_registry,
+    get_not_linkable_types,
 )
 from app.services.audit import log_event
 from app.services.link_graph import ArtefactResolver, is_locked_requirement
@@ -79,14 +80,14 @@ class CreatedLink:
 
 
 def linkable_types_for_project(db: Session, project: Project) -> set[str]:
-    """Registered artefact types whose owning module is enabled for `project` (core types always)."""
+    """Linkable artefact types whose owning module is enabled for `project` (core types always)."""
     from app.modules.registry import is_module_enabled_for_project
 
     types = set(CORE_ARTEFACT_TYPES)
     for definition in get_module_registry().values():
         if definition.artefact_types and is_module_enabled_for_project(db, project.id, definition.key):
             types.update(definition.artefact_types)
-    return types
+    return types - set(get_not_linkable_types())
 
 
 def related_project_or_404(db: Session, project: Project, user_id: uuid.UUID, other_project_id: uuid.UUID) -> Project:
@@ -148,7 +149,7 @@ def require_page_artefact(
     db: Session, resolver: ArtefactResolver, project: Project, artefact_type: str, artefact_id: uuid.UUID
 ) -> ArtefactSummary:
     """The page artefact's summary, or 404 unless it is a visible record of the project."""
-    if artefact_type not in get_all_registered_artefact_types():
+    if artefact_type not in get_linkable_artefact_types():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Artefact not found.")
     resolver.resolve({artefact_type: {artefact_id}})
     summary = resolver.visible((artefact_type, artefact_id))
@@ -170,7 +171,7 @@ def require_finder_artefact(
             of the project; 403 a draft was named by a user who may not link that type.
     """
     if artefact_id == DRAFT_ARTEFACT_ID:
-        if artefact_type not in get_all_registered_artefact_types():
+        if artefact_type not in get_linkable_artefact_types():
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Artefact not found.")
         require_link_authority(resolver, artefact_type)
         return
@@ -257,7 +258,7 @@ def create_link_for_artefact(
     resolver = ArtefactResolver(db, project, user_id)
     require_page_artefact(db, resolver, project, artefact_type, artefact_id)
     authority = require_link_authority(resolver, artefact_type)
-    if other_type not in get_all_registered_artefact_types():
+    if other_type not in get_linkable_artefact_types():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Linked record not found.")
     other_project = project
     other_resolver = resolver

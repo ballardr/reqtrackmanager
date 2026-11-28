@@ -201,7 +201,7 @@ def _problems(
 ) -> list[str]:
     """What stops the rule being evaluated: a record type or condition field that is not registered."""
     problems: list[str] = []
-    registered = registry.get_all_registered_artefact_types()
+    registered = registry.get_linkable_artefact_types()
     if source_type not in registered:
         problems.append(f"The record type {source_type!r} is not available.")
     for _path, leaf in rule_tree.leaves(requires):

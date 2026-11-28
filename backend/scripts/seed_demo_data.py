@@ -1888,6 +1888,40 @@ def seed_governance_profiles(headers: dict, org_id: str, exempt_project_id: str,
     ).raise_for_status()
 
 
+def seed_traceability_exceptions(
+    requester: dict, approver: dict, project_id: str, approved_requirement_id: str, waiting_requirement_id: str,
+) -> None:
+    """Requests two traceability exceptions on requirements of the project and approves the first, so the list shows one
+    covering its record and one awaiting a decision. Each excepts a rule on requirements that is in effect."""
+    base = f"{BASE}/projects/{project_id}/modules/traceability"
+    listed = httpx.get(f"{base}/rules", headers=approver, timeout=30)
+    listed.raise_for_status()
+    rules = [r for r in listed.json()["rules"] if r["source_type"] == "requirement" and r["enabled"] and not r["hidden"]]
+    for requirement_id, title, reason, approve in (
+        (
+            approved_requirement_id, "Traceability deferred to the flight test programme",
+            "The upstream requirement is agreed in principle and will be recorded after the **flight test** review.", True,
+        ),
+        (
+            waiting_requirement_id, "Upstream requirement still being drafted",
+            "The stakeholder requirement this derives from is not yet written.", False,
+        ),
+    ):
+        made = httpx.post(
+            f"{base}/exceptions", json={
+                "artefact_type": "requirement", "artefact_id": requirement_id, "rule_id": rules[0]["id"], "title": title,
+                "reason": reason, "expires_on": (date.today() + timedelta(days=180)).isoformat() if approve else None,
+                "review_date": (date.today() + timedelta(days=90)).isoformat() if approve else None,
+            }, headers=requester, timeout=30,
+        )
+        made.raise_for_status()
+        if approve:
+            httpx.post(
+                f"{base}/exceptions/{made.json()['id']}/approve", json={"comment": "Accepted until the review."},
+                headers=approver, timeout=30,
+            ).raise_for_status()
+
+
 def list_decision_types(headers: dict, project_id: str) -> dict[str, dict]:
     r = httpx.get(f"{BASE}/projects/{project_id}/modules/decisions/decision-types", headers=headers, timeout=30)
     r.raise_for_status()
@@ -3893,6 +3927,10 @@ def main() -> None:
     enable_module(h_pm, org["id"], "decisions")
     print("Seeding governance profiles — one Enforced (with an exemption), one Default and one Opt-in...")
     seed_governance_profiles(h_pm, org["id"], exempt_project_id=avionics["id"], offered_project_id=drone["id"])
+    print("Requesting two traceability exceptions on the Drone project and approving one...")
+    seed_traceability_exceptions(
+        h(login("demo.engineer@example.com", PASSWORD)), h_pm, drone["id"], flight_time_req["id"], remote_id_req["id"],
+    )
     # The Decision register is only a known report once the module is on for the organisation.
     print("Arranging the Reports list: the organisation files the Decision register under Governance/Decisions...")
     r = httpx.put(

@@ -6,7 +6,7 @@ the boundary hours of their dates, are tested in `tests/test_stage_phase_plans.p
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from app.database import SessionLocal
 from app.modules.traceability.tests.test_governance_review_policy import (
@@ -55,7 +55,7 @@ def _inbox(client, token, kind) -> list[dict]:
 
 
 def _days(offset: int) -> str:
-    return (date.today() + timedelta(days=offset)).isoformat()
+    return (datetime.now(UTC).date() + timedelta(days=offset)).isoformat()
 
 
 def test_the_phase_schedule_is_a_reviewable_type(client, admin_token):

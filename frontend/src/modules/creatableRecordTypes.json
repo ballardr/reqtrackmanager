@@ -27,6 +27,7 @@
     "architecture_state_machine_diagram",
     "compliance_required_action_assessment",
     "compliance_requirement",
-    "project_compliance_requirement"
+    "project_compliance_requirement",
+    "traceability_exception"
   ]
 }

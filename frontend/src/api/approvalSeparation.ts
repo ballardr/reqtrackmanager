@@ -25,6 +25,8 @@ export interface ProjectSeparation {
   exempt: boolean;
   /** A person other than the creator must approve now. */
   separate: boolean;
+  /** Only an organisation administrator may approve a record of this type they submitted. */
+  self_approval_org_admins_only: boolean;
 }
 
 /** A project's rules and whether the caller may change them. */
@@ -42,6 +44,8 @@ export interface OrgSeparation {
   module_name: string;
   required: boolean;
   exemptions: LifecycleExemption[];
+  /** Only an organisation administrator may approve a record of this type they submitted. */
+  self_approval_org_admins_only: boolean;
 }
 
 /** What a record's page shows about approval separation. */

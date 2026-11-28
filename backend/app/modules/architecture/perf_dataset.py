@@ -168,7 +168,9 @@ def _type_ids(
     ctx: PerfProjectContext, model: type[ArchitectureElementType] | type[ArchitectureConnectionType],
 ) -> list[uuid.UUID]:
     """The ids of the organisation's default rows of a vocabulary (every generated project offers them)."""
-    return list(ctx.db.scalars(select(model.id).where(model.organization_id == ctx.organization_uuid)))
+    return list(ctx.db.scalars(
+        select(model.id).where(model.organization_id == ctx.organization_uuid).order_by(model.sort_order, model.name)
+    ))
 
 
 def _write_folders(ctx: PerfProjectContext, kind: str, records: int) -> list[uuid.UUID]:
@@ -282,6 +284,7 @@ def generate_connections(ctx: PerfProjectContext) -> dict[str, int]:
     ports: dict[uuid.UUID, list[uuid.UUID]] = {}
     for port_id, element_id in ctx.db.execute(
         select(ArchitecturePort.id, ArchitecturePort.element_id).where(ArchitecturePort.element_id.in_(elements))
+        .order_by(ArchitecturePort.element_id, ArchitecturePort.sort_order, ArchitecturePort.name)
     ):
         ports.setdefault(element_id, []).append(port_id)
     folder_ids = _write_folders(ctx, "connection", count)
@@ -334,7 +337,7 @@ def _scoped_boundaries(
     ).tuples().all())
     ends = ctx.db.execute(
         select(ArchitectureConnection.id, ArchitectureConnection.source_element_id, ArchitectureConnection.target_element_id)
-        .where(ArchitectureConnection.source_element_id.in_(elements)).limit(5000)
+        .where(ArchitectureConnection.source_element_id.in_(elements)).order_by(ArchitectureConnection.id).limit(5000)
     ).tuples().all()
     for scope in ctx.rng.sample([e for e in elements if e not in taken], min(len(elements) - len(taken), 25)):
         sides = [(c, outer_side(scope, parents, a, b)) for c, a, b in ends]

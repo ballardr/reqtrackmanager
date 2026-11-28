@@ -12,7 +12,7 @@ evidence to.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, datetime, timedelta
 
 from app.modules.compliance.tests.test_project_compliance_api import (
     _assign_project_role,
@@ -23,7 +23,7 @@ from app.modules.compliance.tests.test_project_compliance_api import (
 )
 from tests.conftest import auth_headers, create_org_user, create_project, login
 
-TODAY = date.today()
+TODAY = datetime.now(UTC).date()
 
 
 def _setup_project_with_assessment(client, admin_token, org_id, *, project_name="Evidence Project", tree=None):

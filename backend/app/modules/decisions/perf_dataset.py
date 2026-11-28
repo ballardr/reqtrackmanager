@@ -43,7 +43,10 @@ def generate_decisions(ctx: PerfProjectContext) -> dict[str, int]:
         return {}
     type_ids: list = []
     for project_id in get_project_chain_ids(db, ctx.project_uuid):
-        type_ids = list(db.scalars(select(DecisionTypeDefinition.id).where(DecisionTypeDefinition.project_id == project_id)))
+        type_ids = list(db.scalars(
+            select(DecisionTypeDefinition.id).where(DecisionTypeDefinition.project_id == project_id)
+            .order_by(DecisionTypeDefinition.sort_order, DecisionTypeDefinition.name)
+        ))
         if type_ids:
             break
     if not type_ids:

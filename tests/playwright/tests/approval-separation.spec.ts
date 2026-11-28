@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 import {
   approveRequirementFromDetail, deleteOrgOnCleanup, expectNoPromote, installCleanupHook, loginAs, PASSWORD,
@@ -16,50 +16,56 @@ const API_BASE_URL = "http://localhost:8000";
  * organisation can require one for every project, which locks the project's choice until the project is exempt, and a
  * deliberate self-approval in an exempt project needs a comment.
  *
- * Uses a disposable org, admin and project created through the API.
+ * Each test builds its own disposable org, admin and project through the API.
  */
+/** A disposable org with its administrator signed in, a project, and a way to create and approve its requirements. */
+async function setUpProject(page: Page) {
+  // Unique even when the file's tests start in the same millisecond on two workers.
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const adminEmail = `e2e-approval-admin-${suffix}@example.com`;
+  const projectName = `E2E Approval Project ${suffix}`;
+
+  const serverAdminToken = (await (await page.request.post(`${API_BASE_URL}/api/v1/auth/login`, {
+    data: { email: "admin@example.com", password: "ChangeMe123!" },
+  })).json()).access_token;
+  const serverAdminHeaders = { Authorization: `Bearer ${serverAdminToken}` };
+  const org = await (await page.request.post(`${API_BASE_URL}/api/v1/orgs`, {
+    headers: serverAdminHeaders, data: { name: `E2E Approval Org ${suffix}` },
+  })).json();
+  deleteOrgOnCleanup({ id: org.id });
+  await page.request.post(`${API_BASE_URL}/api/v1/orgs/${org.id}/users`, {
+    headers: serverAdminHeaders,
+    data: { email: adminEmail, display_name: "E2E Approval Admin", password: PASSWORD, role: "org_admin" },
+  });
+
+  await loginAs(page, adminEmail, PASSWORD);
+  const adminToken = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
+  const headers = { Authorization: `Bearer ${adminToken}` };
+  const project = await (await page.request.post(`${API_BASE_URL}/api/v1/projects`, {
+    headers, data: { organization_id: org.id, name: projectName, summary: "" },
+  })).json();
+  const component = await (await page.request.post(`${API_BASE_URL}/api/v1/projects/${project.id}/components`, {
+    headers, data: { name: "Software", prefix: "SW" },
+  })).json();
+  const category = await (await page.request.post(`${API_BASE_URL}/api/v1/projects/${project.id}/categories`, {
+    headers, data: { name: "Performance", prefix: "PERF", component_id: component.id },
+  })).json();
+  const createRequirement = async (name: string) => (await (await page.request.post(
+    `${API_BASE_URL}/api/v1/projects/${project.id}/requirements`, {
+      headers, data: { name, component_id: component.id, category_id: category.id },
+    },
+  )).json());
+  const approve = (id: string, comment?: string) => page.request.post(
+    `${API_BASE_URL}/api/v1/projects/${project.id}/requirements/${id}/approve`, { headers, data: comment ? { comment } : {} },
+  );
+  return { suffix, org, project, projectName, createRequirement, approve };
+}
+
 test.describe("Approval separation", () => {
-  test("a creator self-approves by default, a project and the organisation can require a separate approver", async ({ page }) => {
-    const suffix = Date.now();
-    const adminEmail = `e2e-approval-admin-${suffix}@example.com`;
-    const projectName = `E2E Approval Project ${suffix}`;
-
-    const serverAdminToken = (await (await page.request.post(`${API_BASE_URL}/api/v1/auth/login`, {
-      data: { email: "admin@example.com", password: "ChangeMe123!" },
-    })).json()).access_token;
-    const serverAdminHeaders = { Authorization: `Bearer ${serverAdminToken}` };
-    const org = await (await page.request.post(`${API_BASE_URL}/api/v1/orgs`, {
-      headers: serverAdminHeaders, data: { name: `E2E Approval Org ${suffix}` },
-    })).json();
-    deleteOrgOnCleanup({ id: org.id });
-    await page.request.post(`${API_BASE_URL}/api/v1/orgs/${org.id}/users`, {
-      headers: serverAdminHeaders,
-      data: { email: adminEmail, display_name: "E2E Approval Admin", password: PASSWORD, role: "org_admin" },
-    });
-
-    await loginAs(page, adminEmail, PASSWORD);
-    const adminToken = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
-    const headers = { Authorization: `Bearer ${adminToken}` };
-    const project = await (await page.request.post(`${API_BASE_URL}/api/v1/projects`, {
-      headers, data: { organization_id: org.id, name: projectName, summary: "" },
-    })).json();
-    const component = await (await page.request.post(`${API_BASE_URL}/api/v1/projects/${project.id}/components`, {
-      headers, data: { name: "Software", prefix: "SW" },
-    })).json();
-    const category = await (await page.request.post(`${API_BASE_URL}/api/v1/projects/${project.id}/categories`, {
-      headers, data: { name: "Performance", prefix: "PERF", component_id: component.id },
-    })).json();
-    const createRequirement = async (name: string) => (await (await page.request.post(
-      `${API_BASE_URL}/api/v1/projects/${project.id}/requirements`, {
-        headers, data: { name, component_id: component.id, category_id: category.id },
-      },
-    )).json());
+  test("a creator self-approves by default, and a project can require a separate approver", async ({ page }) => {
+    const { suffix, project, createRequirement, approve } = await setUpProject(page);
     const first = await createRequirement(`Boot within 30 seconds ${suffix}`);
     const second = await createRequirement(`Respond within 30 ms ${suffix}`);
-    const third = await createRequirement(`Export within a minute ${suffix}`);
-    const approve = (id: string, comment?: string) => page.request.post(
-      `${API_BASE_URL}/api/v1/projects/${project.id}/requirements/${id}/approve`, { headers, data: comment ? { comment } : {} },
-    );
 
     await test.step("by default the creator approves their own requirement and the record is marked", async () => {
       await page.goto(`/projects/${project.id}/requirements/${first.id}`);
@@ -81,6 +87,11 @@ test.describe("Approval separation", () => {
       expect(refused.status()).toBe(403);
       expect((await refused.json()).detail).toContain("different person");
     });
+  });
+
+  test("an organisation's requirement locks the project's choice until the project is exempt", async ({ page }) => {
+    const { suffix, org, project, projectName, createRequirement, approve } = await setUpProject(page);
+    const third = await createRequirement(`Export within a minute ${suffix}`);
 
     await test.step("the organisation requires a separate approver, which locks the project's choice", async () => {
       await page.goto(`/orgs/${org.id}/admin`);

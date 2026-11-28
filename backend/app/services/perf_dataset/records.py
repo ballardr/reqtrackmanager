@@ -467,7 +467,12 @@ def project_type_ids(ctx: PerfProjectContext, project_type_model: Any, org_type_
         The project's type ids (its own overrides included), possibly empty when the organisation defines none.
     """
     db = ctx.db
-    existing = list(db.scalars(select(project_type_model.id).where(project_type_model.project_id == ctx.project_uuid)))
+    existing = list(db.scalars(
+        select(project_type_model.id)
+        .outerjoin(org_type_model, org_type_model.id == project_type_model.org_type_id)
+        .where(project_type_model.project_id == ctx.project_uuid)
+        .order_by(org_type_model.sort_order, project_type_model.id)
+    ))
     if existing:
         return existing
     org_types = list(db.scalars(

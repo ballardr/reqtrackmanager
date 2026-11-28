@@ -360,7 +360,7 @@ A line drawn at one level of a block diagram for connections between elements in
 
 #### Self-approved
 
-A badge on a record whose latest approval was given by the person who created it. It appears where the project or organisation lets the creator approve (the default); a **separate approver** setting refuses the creator instead. See [Core Features → Lifecycles](../core-features/lifecycles.md#who-may-approve-the-creator-or-another-person).
+A badge on a record whose latest approval was given by a person who submitted it. It appears where the project or organisation lets the submitter approve (the default; for a traceability exception, only an organisation administrator); a **separate approver** setting refuses them instead. See [Core Features → Lifecycles](../core-features/lifecycles.md#who-may-approve-the-creator-or-another-person).
 
 #### Separate approver
 

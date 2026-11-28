@@ -20,7 +20,7 @@ import io
 import re
 import zipfile
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from docx import Document as DocxDocument
@@ -45,7 +45,7 @@ def full_world(client, admin_token, name: str) -> World:
 def fill(world: World, project: dict) -> None:
     """Records for every table a starter prints: open questions (one overdue), a requirement, a pain point, a decision."""
     questions = f"/api/v1/projects/{project['id']}/modules/context_strategy/open-questions"
-    past = (date.today() - timedelta(days=400)).isoformat()
+    past = (datetime.now(UTC).date() - timedelta(days=400)).isoformat()
     bodies = (
         {"question": "Which regulator signs off the data transfer?", "due_date": past},
         {"question": "Keep Q2 pricing"},

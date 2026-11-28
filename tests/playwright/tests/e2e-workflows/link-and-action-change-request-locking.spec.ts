@@ -1,6 +1,6 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
-import { approveRequirementFromDetail, loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES, expectCurrentStep, expectRecordLocked, promoteTo } from "./helpers";
+import { approveRequirementFromDetail, loginAs, openProject, PERSONAS, PROJECT_NAMES, expectCurrentStep, expectRecordLocked, promoteTo } from "./helpers";
 import { openAddLinkDialog } from "../modules/linksPanel";
 
 /**
@@ -10,54 +10,68 @@ import { openAddLinkDialog } from "../modules/linksPanel";
  *    `require_change_request_for_approved_links` (or an organisation-wide force applies).
  *
  * Uses "Epsilon-1 Link Lock Demo" (`PROJECT_NAMES.epsilon1`), seeded solely for this coverage. Every requirement,
- * link and action is created fresh by each run: approving and unlinking are one-way, so a seeded fixture would be
+ * link and action is created fresh by each test: approving and unlinking are one-way, so a seeded fixture would be
  * consumed after the first run.
  */
-test.describe("action/link change-request locking", () => {
-  test("unlinking an action, and adding/removing a link, all route through a change request once locked", async ({ page }) => {
-    const ts = Date.now();
-    const reqAName = `E2E Link Lock Source ${ts}`;
-    const reqBName = `E2E Link Lock Target 1 ${ts}`;
-    const reqCName = `E2E Link Lock Target 2 ${ts}`;
-    const actionTitle = `E2E Link Lock Action ${ts}`;
+/**
+ * Signs in, opens the demo project and creates the named throwaway requirements.
+ *
+ * The requirements are created through the API: creating one is not what these scenarios test, and doing it in the UI
+ * spends the time the locked-record steps need. The seeded project is shared and cumulative: its requirement list grows
+ * with every run, so a requirement is opened by its address (`openRequirement`) rather than found in the list, and a
+ * `tr:has-text("Draft")` match would land on another run's row; `createsChangeRequest` returns each new request's id from
+ * its creating response, to be opened directly by URL.
+ */
+async function setUp(page: Page, requirementNames: string[]) {
+  await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+  await openProject(page, PROJECT_NAMES.epsilon1);
+  const projectIdMatch = page.url().match(/\/projects\/([0-9a-f-]{36})/);
+  if (!projectIdMatch) throw new Error(`Could not extract project id from URL: ${page.url()}`);
+  const projectId = projectIdMatch[1];
 
-    await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await openProject(page, PROJECT_NAMES.epsilon1);
-    await page.getByRole("link", { name: "Requirements", exact: true }).click();
-    // The "Change requests" list is shared, cumulative state for the project, so a `tr:has-text("Draft")` match
-    // breaks strict mode (or lands on the wrong row) once a second Draft row exists. Each created change request's id
-    // is captured from its creating POST response and opened directly by URL, as `openRequirementByCode` does.
-    const projectIdMatch = page.url().match(/\/projects\/([0-9a-f-]{36})/);
-    if (!projectIdMatch) throw new Error(`Could not extract project id from URL: ${page.url()}`);
-    const projectId = projectIdMatch[1];
-
-    async function createsChangeRequest(action: () => Promise<void>): Promise<string> {
-      const [response] = await Promise.all([
-        page.waitForResponse(
-          (resp) => resp.request().method() === "POST" && /\/change-requests$/.test(new URL(resp.url()).pathname)
-        ),
-        action(),
-      ]);
-      const body = (await response.json()) as { id: string };
-      return body.id;
-    }
-
-    // Through the API: creating a requirement is not what this scenario tests, and doing it in the UI spends the time
-    // the locked-record steps need.
-    await test.step("create three throwaway requirements", async () => {
-      const headers = { Authorization: `Bearer ${await page.evaluate(() => localStorage.getItem("reqtrack_token"))}` };
-      const base = `http://localhost:8000/api/v1/projects/${projectId}`;
-      const [category] = await (await page.request.get(`${base}/categories`, { headers })).json();
-      for (const name of [reqAName, reqBName, reqCName]) {
-        const created = await page.request.post(`${base}/requirements`, {
-          headers, data: { name, component_id: category.component_id, category_id: category.id },
-        });
-        expect(created.status(), await created.text()).toBe(201);
-      }
+  const headers = { Authorization: `Bearer ${await page.evaluate(() => localStorage.getItem("reqtrack_token"))}` };
+  const base = `http://localhost:8000/api/v1/projects/${projectId}`;
+  const [category] = await (await page.request.get(`${base}/categories`, { headers })).json();
+  const requirementIds: Record<string, string> = {};
+  for (const name of requirementNames) {
+    const created = await page.request.post(`${base}/requirements`, {
+      headers, data: { name, component_id: category.component_id, category_id: category.id },
     });
+    expect(created.status(), await created.text()).toBe(201);
+    requirementIds[name] = ((await created.json()) as { id: string }).id;
+  }
 
-    await test.step("link an action and a requirement to reqA directly (still draft, ungated), then approve it", async () => {
-      await openRequirementByName(page, reqAName);
+  async function openRequirement(name: string): Promise<void> {
+    await page.goto(`/projects/${projectId}/requirements/${requirementIds[name]}`);
+    await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+  }
+
+  async function createsChangeRequest(action: () => Promise<void>): Promise<string> {
+    const [response] = await Promise.all([
+      page.waitForResponse(
+        (resp) => resp.request().method() === "POST" && /\/change-requests$/.test(new URL(resp.url()).pathname)
+      ),
+      action(),
+    ]);
+    const body = (await response.json()) as { id: string };
+    return body.id;
+  }
+
+  return { projectId, createsChangeRequest, openRequirement };
+}
+
+/** A name unique even when the file's tests start in the same millisecond on two workers. */
+const uniqueSuffix = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+test.describe("action/link change-request locking", () => {
+  test("unlinking an action routes through a change request once the requirement is locked", async ({ page }) => {
+    const ts = uniqueSuffix();
+    const reqAName = `E2E Action Lock Source ${ts}`;
+    const actionTitle = `E2E Link Lock Action ${ts}`;
+    const { projectId, createsChangeRequest, openRequirement } = await setUp(page, [reqAName]);
+
+    await test.step("link an action to the requirement directly (still draft, ungated), then approve it", async () => {
+      await openRequirement(reqAName);
 
       await page.getByRole("button", { name: "Create and link a new action" }).click();
       const actionPanel = page.getByRole("dialog", { name: "Create and link a new action" });
@@ -66,21 +80,6 @@ test.describe("action/link change-request locking", () => {
       await actionPanel.getByRole("button", { name: "Create", exact: true }).click();
       await expect(actionPanel).not.toBeVisible();
       await expect(page.getByRole("link", { name: actionTitle })).toBeVisible();
-
-      await openAddLinkDialog(page, page.getByRole("region", { name: "Links", exact: true }));
-      const linkModal = page.getByRole("dialog", { name: "Add a link" });
-      // Still draft — no change-request notice, and Add link works directly.
-      await expect(linkModal.getByText(/requires link changes to go through a change request/i)).toHaveCount(0);
-      await linkModal.getByLabel("Link to").selectOption({ label: "Requirement" });
-      await linkModal.getByLabel("Search").fill(reqBName);
-      const targetSelect = linkModal.getByLabel("Record");
-      await expect(targetSelect.locator("option", { hasText: reqBName })).toHaveCount(1);
-      const targetValue = await targetSelect.locator("option", { hasText: reqBName }).getAttribute("value");
-      await targetSelect.selectOption(targetValue!);
-      await linkModal.getByLabel("Relationship").selectOption({ label: "Related to" });
-      await linkModal.getByRole("button", { name: "Add link" }).click();
-      await expect(linkModal).not.toBeVisible();
-      await expect(page.getByRole("link", { name: reqBName })).toBeVisible();
 
       await approveRequirementFromDetail(page);
       await expect(page.getByText("Requirement approved")).toBeVisible();
@@ -111,9 +110,38 @@ test.describe("action/link change-request locking", () => {
       await promoteTo(page, "Approved");
       await expectCurrentStep(page, "Approved");
 
-      await page.getByRole("link", { name: "Requirements", exact: true }).click();
-      await openRequirementByName(page, reqAName);
+      await openRequirement(reqAName);
       await expect(page.getByRole("link", { name: actionTitle })).toHaveCount(0);
+    });
+  });
+
+  test("removing a link routes through a change request once the requirement is locked", async ({ page }) => {
+    const ts = uniqueSuffix();
+    const reqAName = `E2E Link Lock Source ${ts}`;
+    const reqBName = `E2E Link Lock Target ${ts}`;
+    const { projectId, createsChangeRequest, openRequirement } = await setUp(page, [reqAName, reqBName]);
+
+    await test.step("link a requirement to reqA directly (still draft, ungated), then approve it", async () => {
+      await openRequirement(reqAName);
+
+      await openAddLinkDialog(page, page.getByRole("region", { name: "Links", exact: true }));
+      const linkModal = page.getByRole("dialog", { name: "Add a link" });
+      // Still draft — no change-request notice, and Add link works directly.
+      await expect(linkModal.getByText(/requires link changes to go through a change request/i)).toHaveCount(0);
+      await linkModal.getByLabel("Link to").selectOption({ label: "Requirement" });
+      await linkModal.getByLabel("Search").fill(reqBName);
+      const targetSelect = linkModal.getByLabel("Record");
+      await expect(targetSelect.locator("option", { hasText: reqBName })).toHaveCount(1);
+      const targetValue = await targetSelect.locator("option", { hasText: reqBName }).getAttribute("value");
+      await targetSelect.selectOption(targetValue!);
+      await linkModal.getByLabel("Relationship").selectOption({ label: "Related to" });
+      await linkModal.getByRole("button", { name: "Add link" }).click();
+      await expect(linkModal).not.toBeVisible();
+      await expect(page.getByRole("link", { name: reqBName })).toBeVisible();
+
+      await approveRequirementFromDetail(page);
+      await expect(page.getByText("Requirement approved")).toBeVisible();
+      await expectRecordLocked(page);
     });
 
     let removeLinkCrId = "";
@@ -140,9 +168,22 @@ test.describe("action/link change-request locking", () => {
       await promoteTo(page, "Approved");
       await expectCurrentStep(page, "Approved");
 
-      await page.getByRole("link", { name: "Requirements", exact: true }).click();
-      await openRequirementByName(page, reqAName);
+      await openRequirement(reqAName);
       await expect(page.getByRole("link", { name: reqBName })).toHaveCount(0);
+    });
+  });
+
+  test("adding a link routes through a change request once the requirement is locked", async ({ page }) => {
+    const ts = uniqueSuffix();
+    const reqAName = `E2E Link Add Lock Source ${ts}`;
+    const reqCName = `E2E Link Add Lock Target ${ts}`;
+    const { projectId, createsChangeRequest, openRequirement } = await setUp(page, [reqAName, reqCName]);
+
+    await test.step("approve the requirement, which locks it", async () => {
+      await openRequirement(reqAName);
+      await approveRequirementFromDetail(page);
+      await expect(page.getByText("Requirement approved")).toBeVisible();
+      await expectRecordLocked(page);
     });
 
     let addLinkCrId = "";
@@ -176,8 +217,7 @@ test.describe("action/link change-request locking", () => {
       await page.getByRole("dialog", { name: "Approve change request" }).getByRole("button", { name: "Approve and merge 1 link" }).click();
       await expectCurrentStep(page, "Approved");
 
-      await page.getByRole("link", { name: "Requirements", exact: true }).click();
-      await openRequirementByName(page, reqAName);
+      await openRequirement(reqAName);
       await expect(page.getByRole("link", { name: reqCName })).toBeVisible();
     });
   });

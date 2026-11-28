@@ -13,7 +13,7 @@ api.py`'s helpers for setup, the same way `test_compliance_evidence_api.py`/
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from app.database import SessionLocal
 from app.modules.compliance.scheduler import (
@@ -33,7 +33,7 @@ from app.modules.compliance.tests.test_project_compliance_api import (
 from app.services.review_engine import send_review_reminders as send_review_due_notifications
 from tests.conftest import auth_headers, create_org_admin_in, create_org_user, create_project, login
 
-TODAY = date.today()
+TODAY = datetime.now(UTC).date()
 
 
 def _notifications_for(client, token):

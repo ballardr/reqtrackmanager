@@ -2,9 +2,9 @@
 Module: modules.traceability.enums
 
 Closed vocabularies of the module: how a governance profile binds a project, which projects it reaches, what it does for
-one project, how a profile's stage workflow binds a project, how firmly a traceability rule is expected to hold, which approvals
-baseline checks run before, a record's traceability state and where a Required rule is enforced, and how a project's
-governance health is kept.
+one project, how a profile's stage workflow binds a project, how firmly a traceability rule is expected to hold, which
+approvals baseline checks run before, a record's traceability state, the states of a traceability exception, where a
+Required rule is enforced, and how a project's governance health is kept.
 
 Responsibilities:
 - Name each value once; the model stores the value as a plain string and the services validate against these.
@@ -111,11 +111,14 @@ class ApprovalCheckMode(str, Enum):
 class TraceabilityState(str, Enum):
     """Whether a record meets a rule or one of a rule's requirements.
 
-    `INHERITED` is met only by counting links carried over from another record, which no person has confirmed.
+    `INHERITED` is met only by counting links carried over from another record, which no person has confirmed. `EXCEPTED`
+    belongs to a rule only, never to one of its requirements: the record does not meet the rule and an approved exception
+    covers it.
     """
 
     MET = "met"
     INHERITED = "inherited"
+    EXCEPTED = "excepted"
     UNMET = "unmet"
 
 
@@ -123,9 +126,30 @@ class RecordTraceabilityStatus(str, Enum):
     """A record's standing against every rule that applies to it."""
 
     COMPLETE = "complete"
+    EXCEPTED = "excepted"
     INHERITED = "inherited"
     INCOMPLETE = "incomplete"
     NOT_APPLICABLE = "not_applicable"
+
+
+class ExceptionStatus(str, Enum):
+    """Where a traceability exception is in its approval. Only an `APPROVED` one can cover a rule."""
+
+    REQUESTED = "requested"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    WITHDRAWN = "withdrawn"
+    REVOKED = "revoked"
+
+
+class ExceptionNoCoverReason(str, Enum):
+    """Why an exception does not cover its rule for its record."""
+
+    NOT_APPROVED = "not_approved"
+    ARCHIVED = "archived"
+    EXPIRED = "expired"
+    RULE_REMOVED = "rule_removed"
+    NEEDS_ORGANISATION_APPROVAL = "needs_organisation_approval"
 
 
 class EnforcementPoint(str, Enum):

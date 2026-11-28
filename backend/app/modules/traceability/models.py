@@ -6,7 +6,8 @@ a profile targets, the projects exempt from an Enforced profile, each project's 
 rows a profile owns (the states it requires and whether it forbids skipping steps), the approval policy rows a
 profile or a project owns (the roles that may also approve a record type) and the review policy rows a profile or a
 project owns (the review interval, reminder lead and default owner of a record type) and the baseline policy rows a
-profile or a project owns (which checks run before a baseline, and which fields a record must have filled).
+profile or a project owns (which checks run before a baseline, and which fields a record must have filled), and the
+traceability exceptions a project records against a rule, with their comments and evidence files.
 
 Design decisions:
 - A profile holds no policy itself. Each policy table carries a `profile_id` (a `modules.seams.ProfileContributor`),
@@ -43,6 +44,12 @@ Design decisions:
   organisation") and the project's latest snapshot (`governance_health_snapshots`, one row, derived data). A snapshot holds
   counts only, never a record's code or content, so one row can serve every viewer once their own rights are applied. The
   check runner and the person who ran the stored check results are users whose deletion clears the reference.
+- A traceability exception names one record (a type and an id, with no foreign key, as a link does) and one rule. The
+  rule reference clears when the rule is deleted and `rule_name` keeps what was excepted readable; such an exception
+  covers nothing. `approved_fingerprint` is the rule's logic as approved, so a later edit is reported, and
+  `org_approved` says whether the person who approved held the organisation-level right a rule of an Enforced profile
+  needs. `expires_on` and `review_date` are calendar dates: the first ends the cover, the second only schedules a
+  reminder.
 - Choices do not fall back to an ancestor project: reach down the project tree is the organisation's decision
   (`include_children` on a target), and a manager of a parent project must not decide for children they may not manage.
 """
@@ -50,22 +57,24 @@ Design decisions:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
-from app.models.base import TimestampMixin, UUIDPKMixin
+from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
 from app.models.principal import principal_check_constraint, principal_id_column, principal_type_column
+from app.modules.traceability.enums import ExceptionStatus
 
 PROFILE_NAME_MAX_LENGTH = 200
 PROFILE_DESCRIPTION_MAX_LENGTH = 500
 EXEMPTION_REASON_MAX_LENGTH = 500
 RULE_NAME_MAX_LENGTH = 200
 RULE_DESCRIPTION_MAX_LENGTH = 500
+EXCEPTION_TITLE_MAX_LENGTH = 300
 
 
 class GovernanceProfile(UUIDPKMixin, TimestampMixin, Base):
@@ -492,3 +501,111 @@ class GovernanceHealthSnapshot(UUIDPKMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     checks_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TraceabilityException(UUIDPKMixin, TimestampMixin, Base):
+    """An accepted departure of one record from one traceability rule, with its own approval.
+
+    Attributes:
+        project_id: The project, which holds both the record and the rule's evaluation.
+        unique_code: Project-scoped code (`TEX-001`).
+        creator_id: Who raised the record.
+        is_archived / archived_at / archived_by: Soft delete; an archived exception covers nothing.
+        title: Short name shown in lists and links.
+        artefact_type / artefact_id: The record excepted.
+        rule_id: The rule excepted, `None` once the rule is deleted.
+        rule_name: The rule's name when the exception was last saved or approved.
+        reason: Why the departure is legitimate (Markdown).
+        requester_type / requester_id: The user or group asking for the exception.
+        approver_type / approver_id: A nominated approver, told of the request; the nomination grants no right.
+        status: Lifecycle state.
+        expires_on: The last day the approved exception covers, or `None` for no expiry.
+        review_date: When the exception is next to be reviewed, or `None`.
+        decided_by_id / decided_at / decision_comment: The latest approval, rejection or revocation.
+        approved_fingerprint: The digest of the rule's logic when approved.
+        org_approved: The approver held the organisation-level exception right.
+        review_due_notified_for / review_overdue_notified_for: The `review_date` each reminder was last sent for.
+    """
+
+    __tablename__ = "traceability_exceptions"
+    __table_args__ = (
+        UniqueConstraint("project_id", "unique_code", name="uq_traceability_exceptions_project_code"),
+        principal_check_constraint("requester"),
+        principal_check_constraint("approver", nullable=True),
+        Index("ix_traceability_exceptions_record", "project_id", "artefact_type", "artefact_id"),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    unique_code: Mapped[str] = mapped_column(String(64))
+    creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    title: Mapped[str] = mapped_column(String(EXCEPTION_TITLE_MAX_LENGTH))
+    artefact_type: Mapped[str] = mapped_column(String(64))
+    artefact_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    rule_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("governance_traceability_rules.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    rule_name: Mapped[str] = mapped_column(String(RULE_NAME_MAX_LENGTH))
+    reason: Mapped[str] = mapped_column(Text, default="")
+    requester_type: Mapped[str] = principal_type_column()
+    requester_id: Mapped[uuid.UUID] = principal_id_column()
+    approver_type: Mapped[str | None] = principal_type_column(nullable=True)
+    approver_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
+    status: Mapped[ExceptionStatus] = mapped_column(str_enum(ExceptionStatus, 16), default=ExceptionStatus.REQUESTED)
+    expires_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    review_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    decided_by_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision_comment: Mapped[str] = mapped_column(Text, default="")
+    approved_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    org_approved: Mapped[bool] = mapped_column(Boolean, default=False)
+    review_due_notified_for: Mapped[date | None] = mapped_column(Date, nullable=True)
+    review_overdue_notified_for: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+
+class TraceabilityExceptionComment(UUIDPKMixin, TimestampMixin, Base):
+    """A discussion comment on a `TraceabilityException`.
+
+    Attributes:
+        exception_id: The commented-on exception.
+        author_id: Who wrote it.
+        body: Comment text.
+        edited_at: Set only when the body changed after creation.
+    """
+
+    __tablename__ = "traceability_exception_comments"
+
+    exception_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("traceability_exceptions.id", ondelete="CASCADE"), index=True
+    )
+    author_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    body: Mapped[str] = mapped_column(Text)
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TraceabilityExceptionCommentFile(UUIDPKMixin, TimestampMixin, Base):
+    """A file attached to a `TraceabilityExceptionComment`."""
+
+    __tablename__ = "traceability_exception_comment_files"
+
+    comment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("traceability_exception_comments.id", ondelete="CASCADE"), index=True
+    )
+    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
+    uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class TraceabilityExceptionFile(UUIDPKMixin, Base):
+    """Links a directly uploaded evidence file to a `TraceabilityException`."""
+
+    __tablename__ = "traceability_exception_files"
+    __table_args__ = (UniqueConstraint("exception_id", "file_id", name="uq_traceability_exception_files"),)
+
+    exception_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("traceability_exceptions.id", ondelete="CASCADE"), index=True
+    )
+    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
+    linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

@@ -13,13 +13,16 @@ Design decisions:
 - Traceability computes and never blocks. A Required rule refuses a baseline or an approval only through the baseline
   policy that enables the module's check (`baseline_checks`), and anywhere it does not, it says so with the reason rather
   than reading as enforced.
+- A rule a record does not meet and an approved exception covers is `excepted`, never `met`, so a waiver reads apart from
+  real coverage (`exception_cover`).
 - A record is `incomplete` when any applying rule is unmet, else `inherited` when any is met only through carried-over
-  links, else `complete`; with no applying rule it is `not_applicable`. The highest level among the rules that are not met
-  lets a view highlight a warning or required rule apart from an informational one.
+  links, else `excepted` when any is covered only by an exception, else `complete`; with no applying rule it is
+  `not_applicable`. The highest level among the rules that are neither met nor excepted lets a view highlight a warning or
+  required rule apart from an informational one.
 - A rule that cannot be evaluated is reported by name and counts neither way.
 - The statements grow with the rules and their leaves, never with the records (`rule_evaluation`).
 
-Dependencies: `rules`, `rule_evaluation`, `services.baseline` (which checks run), `services.approval_separation` (which
+Dependencies: `rules`, `rule_evaluation`, `exception_cover`, `services.baseline` (which checks run), `services.approval_separation` (which
 types have an approval), `services.record_summaries`.
 """
 
@@ -33,7 +36,7 @@ from sqlalchemy.orm import Session
 
 from app.models.project import Project
 from app.modules import registry
-from app.modules.traceability import rule_evaluation, rules
+from app.modules.traceability import exception_cover, rule_evaluation, rules
 from app.modules.traceability._shared import BASELINE_POLICIES, TRACEABILITY_MODULE_KEY
 from app.modules.traceability.enums import (
     EnforcementPoint,
@@ -72,12 +75,14 @@ class RuleStatus:
     Attributes:
         entry: The rule in effect, with its source.
         state: Whether the record meets it.
-        leaves: One result per requirement of the rule, in tree order.
+        leaves: One result per requirement of the rule, in tree order; an excepted rule keeps the results it has.
+        exception: The exception covering the rule, set only when `state` is `excepted`.
     """
 
     entry: rules.EffectiveRule
     state: TraceabilityState
     leaves: tuple[rule_evaluation.LeafResult, ...]
+    exception: exception_cover.Cover | None = None
 
     @property
     def level(self) -> RuleLevel:
@@ -107,12 +112,14 @@ class RecordStatus:
             return RecordTraceabilityStatus.INCOMPLETE
         if TraceabilityState.INHERITED in states:
             return RecordTraceabilityStatus.INHERITED
+        if TraceabilityState.EXCEPTED in states:
+            return RecordTraceabilityStatus.EXCEPTED
         return RecordTraceabilityStatus.COMPLETE
 
     @property
     def highest_level(self) -> RuleLevel | None:
-        """The highest level among the rules the record does not meet, `None` when it meets every one."""
-        levels = [r.level for r in self.rules if r.state != TraceabilityState.MET]
+        """The highest level among the rules the record neither meets nor is excepted from, `None` when there is none."""
+        levels = [r.level for r in self.rules if r.state not in (TraceabilityState.MET, TraceabilityState.EXCEPTED)]
         return max(levels, key=_LEVEL_ORDER.index) if levels else None
 
 
@@ -156,18 +163,21 @@ def record_statuses(
     found: dict[uuid.UUID, list[RuleStatus]] = {i: [] for i in ids}
     unevaluated: list[str] = []
     if ids:
-        for entry in rules.effective_rules(db, project):
-            rule = entry.rule
-            if not entry.active or rule.source_type != artefact_type:
-                continue
-            if levels is not None and RuleLevel(rule.level) not in levels:
-                continue
-            result = rules.evaluate(db, project, rule, record_ids=ids)
+        applying = {
+            entry.rule.id: entry for entry in rules.effective_rules(db, project)
+            if entry.active and entry.rule.source_type == artefact_type
+            and (levels is None or RuleLevel(entry.rule.level) in levels)
+        }
+        covers = exception_cover.covers_for(db, project.id, artefact_type, ids, applying)
+        for rule_id, entry in applying.items():
+            result = rules.evaluate(db, project, entry.rule, record_ids=ids)
             if result.problems:
-                unevaluated.append(rule.name)
+                unevaluated.append(entry.rule.name)
                 continue
             for record in result.in_scope:
-                found[record.record_id].append(RuleStatus(entry, record.state, record.leaves))
+                cover = None if record.state == TraceabilityState.MET else covers.get((record.record_id, rule_id))
+                state = record.state if cover is None else TraceabilityState.EXCEPTED
+                found[record.record_id].append(RuleStatus(entry, state, record.leaves, cover))
     return TypeStatus({i: RecordStatus(i, tuple(v)) for i, v in found.items()}, tuple(unevaluated))
 
 

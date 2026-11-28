@@ -41,9 +41,9 @@ from app.models.requirement_action import RequirementAction
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.modules.registry import (
     ArtefactSummary,
-    get_all_registered_artefact_types,
     get_artefact_summaries_in_project,
     get_artefact_type_label,
+    get_linkable_artefact_types,
 )
 from app.schemas.link_graph import (
     LinkGraphDirection,
@@ -335,7 +335,7 @@ def build_link_graph(
         The graph, or `None` when the root's type is unregistered or the root is
         not a visible record of `project` (callers answer 404 either way).
     """
-    if root_type not in get_all_registered_artefact_types():
+    if root_type not in get_linkable_artefact_types():
         return None
     depth = max(1, min(depth, MAX_DEPTH))
     resolver = ArtefactResolver(db, project, user_id, include_related=True)

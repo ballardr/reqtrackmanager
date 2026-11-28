@@ -8,7 +8,7 @@ preset builder, a rule's evaluation counts, records' traceability status and the
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal
 from uuid import UUID
 
@@ -230,7 +230,8 @@ class RuleEvaluationOut(BaseModel):
         in_scope: Records the rule applies to.
         satisfied: In-scope records that meet the rule.
         inherited: In-scope records that meet it only by counting links carried over from another record.
-        unsatisfied: In-scope records that do not.
+        excepted: In-scope records that do not meet it and are covered by an approved exception.
+        unsatisfied: In-scope records that do not meet it and have no such exception.
         leaves: Per requirement leaf, the in-scope records meeting it.
         problems: Why the rule could not be evaluated.
     """
@@ -239,6 +240,7 @@ class RuleEvaluationOut(BaseModel):
     in_scope: int
     satisfied: int
     inherited: int
+    excepted: int
     unsatisfied: int
     leaves: list[RuleLeafCountOut]
     problems: list[str]
@@ -262,10 +264,25 @@ class LeafStatusOut(BaseModel):
     state: TraceabilityState
 
 
+class RuleExceptionOut(BaseModel):
+    """The approved exception covering a rule for a record.
+
+    Attributes:
+        rule_changed: The rule's logic differs from what the exception was approved against.
+    """
+
+    id: UUID
+    unique_code: str
+    title: str
+    expires_on: date | None
+    rule_changed: bool
+
+
 class RuleStatusOut(BaseModel):
     """One rule that applies to a record.
 
     Attributes:
+        excepted_by: For an `excepted` rule, the covering exception; null for a caller who may not read exceptions.
         enforced_at: For a Required rule, where a record that does not meet it is refused.
         not_enforced_reason: For a Required rule that refuses nothing, why; null otherwise.
     """
@@ -279,14 +296,15 @@ class RuleStatusOut(BaseModel):
     enforced_at: list[EnforcementPoint]
     not_enforced_reason: NotEnforcedReason | None
     leaves: list[LeafStatusOut]
+    excepted_by: RuleExceptionOut | None = None
 
 
 class RecordStatusOut(BaseModel):
     """A record's traceability status with every rule that applies to it.
 
     Attributes:
-        status: `complete`, `inherited`, `incomplete` or `not_applicable` (no rule applies).
-        highest_level: The highest level among the rules not met; null when every one is met.
+        status: `complete`, `excepted`, `inherited`, `incomplete` or `not_applicable` (no rule applies).
+        highest_level: The highest level among the rules neither met nor excepted; null when there is none.
         unevaluated_rules: Names of rules for the record's type that cannot be evaluated.
     """
 
@@ -298,7 +316,8 @@ class RecordStatusOut(BaseModel):
 
 
 class RecordStatusSummaryOut(BaseModel):
-    """One record's standing in a list: its status, the highest level it fails and how many rules it does not meet."""
+    """One record's standing in a list: its status, the highest level it fails and how many rules it does not meet,
+    meets only through carried-over links, or is excepted from."""
 
     record_id: UUID
     status: RecordTraceabilityStatus
@@ -306,6 +325,7 @@ class RecordStatusSummaryOut(BaseModel):
     applicable: int
     unmet: int
     inherited: int
+    excepted: int
 
 
 class TypeStatusOut(BaseModel):

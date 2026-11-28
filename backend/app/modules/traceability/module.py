@@ -6,11 +6,16 @@ sub-components in two halves, the permission atoms and roles that administer the
 organisation and project APIs and bundles, and the engine registration points the later parts plug into.
 
 Registered contributions:
-- Frontend: a project nav entry for Governance Health, shown while the `governance_health` part is in effect; the policy
-  and profile screens are administration sections registered by the module's `module.ts`.
+- Frontend: project nav entries for Governance Health and Traceability Exceptions, each shown while its part is in
+  effect; the policy and profile screens are administration sections registered by the module's `module.ts`.
 - Governance health (`health`, `health_router`): the project's figures per record category, reviews due and baseline check
   results, live or from a snapshot; the hourly `health_snapshots` job refreshes interval snapshots. MCP tools and guidance
   (`mcp_tools`, `mcp_guidance.md`) configure governance and read the health.
+- The `traceability_exception` record type (`TEX-nnn`), in the `traceability_exceptions` part: its summary, search,
+  record table, report fields, evidence, long-text declaration and scaling probe (`exception_records`), its status path,
+  review schedule and health figure (`exception_governance`), its dataset generator (`exception_perf`), its requester and
+  approver as principal references, its notification types and its bundle entries (`exception_bundle`). It takes no links
+  (`not_linkable`).
 - Sub-components: Governance (`lifecycle_policies`, `approval_policies`, `review_policies`, `baseline_policies`,
   `governance_health`) and Traceability (`traceability_rules`, `traceability_exceptions`,
   `traceability_matrices`, `cross_project_traceability`). An exception and cross-project traceability `require`
@@ -44,18 +49,23 @@ Dependencies: `modules.registry`, `modules.seams`.
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import UUID
 
 from fastapi import APIRouter
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.models.enums import OrgRole, ProjectRole
 from app.modules.registry import (
     ModuleDefinition,
     ModuleFrontendManifest,
+    ModuleNavEntry,
     ModuleOrgBundleHooks,
     ModuleProjectBundleHooks,
     ModuleRoleDefinition,
     ModuleScheduledJob,
     ModuleSubComponentDefinition,
+    PerfDatasetGenerator,
     PrincipalReference,
 )
 from app.modules.seams import (
@@ -70,6 +80,10 @@ from app.modules.traceability import (
     baseline_checks,
     baseline_policy,
     bundle,
+    exception_governance,
+    exception_perf,
+    exception_records,
+    exceptions,
     health,
     lifecycle_policy,
     review_policy,
@@ -83,6 +97,8 @@ from app.modules.traceability._shared import (
     APPROVE_TRACEABILITY_EXCEPTIONS,
     BASELINE_POLICIES,
     CROSS_PROJECT_TRACEABILITY,
+    EXCEPTION_ARTEFACT_TYPE,
+    EXCEPTION_CODE_PREFIX,
     GOVERNANCE_HEALTH,
     GOVERNANCE_MANAGER_ROLE,
     GOVERNANCE_ORG_MANAGER_ROLE,
@@ -100,7 +116,10 @@ from app.modules.traceability._shared import (
     TRACEABILITY_RULES,
 )
 from app.modules.traceability.mcp_tools import build_mcp_tools
-from app.modules.traceability.models import GovernanceReviewPolicy
+from app.modules.traceability.models import (
+    GovernanceReviewPolicy,
+    TraceabilityException,
+)
 
 # Hand-written agent usage guidance, embedded in the MCP skill (see ModuleDefinition.mcp_guidance).
 _MCP_GUIDANCE = (Path(__file__).parent / "mcp_guidance.md").read_text(encoding="utf-8")
@@ -120,6 +139,23 @@ def get_project_router() -> APIRouter | None:
     from app.modules.traceability.project_router import router
 
     return router
+
+
+def resolve_file_owner_project_id(db: Session, file_id: UUID) -> UUID | None:
+    """`ModuleDefinition.resolve_file_owner_project_id`: the project of the exception a file is evidence of, directly or
+    through a comment."""
+    from app.modules.traceability.exception_views import ATTACHMENTS
+    from app.services.module_attachments import resolve_file_project_id
+
+    return resolve_file_project_id(db, ATTACHMENTS, TraceabilityException, file_id)
+
+
+def _artefact_ids_in_organization(db: Session, organization_id: UUID) -> set[UUID]:
+    """`ModuleDefinition.artefact_ids_in_organization`: every exception in the organisation's projects."""
+    from app.models.project import Project
+
+    project_ids = select(Project.id).where(Project.organization_id == organization_id)
+    return set(db.scalars(select(TraceabilityException.id).where(TraceabilityException.project_id.in_(project_ids))))
 
 
 MODULE_DEFINITION = ModuleDefinition(
@@ -142,7 +178,8 @@ MODULE_DEFINITION = ModuleDefinition(
         export_with_projects=bundle.export_org_project_data, import_with_projects=bundle.import_org_project_data,
     ),
     project_bundle_hooks=ModuleProjectBundleHooks(
-        export=bundle.export_project_data, import_=bundle.import_project_data,
+        export=bundle.export_project_data, import_=bundle.import_project_data, import_late=bundle.import_late_project_data,
+        template_record_keys=frozenset({bundle.EXCEPTIONS_KEY}), template_reset=bundle.reset_for_template,
         template_configuration_keys=frozenset({
             bundle.CHOICES_KEY, bundle.APPROVAL_POLICIES_KEY, bundle.REVIEW_POLICIES_KEY, bundle.BASELINE_POLICY_KEY,
             bundle.HEALTH_SETTINGS_KEY, bundle.RULES_KEY, bundle.HIDDEN_RULES_KEY,
@@ -160,6 +197,14 @@ MODULE_DEFINITION = ModuleDefinition(
         nav_path=f"/projects/{{project_id}}/modules/{TRACEABILITY_MODULE_KEY}/health",
         nav_icon="gauge",
         nav_sub_component=GOVERNANCE_HEALTH,
+        additional_nav_entries=(
+            ModuleNavEntry(
+                nav_label="Traceability Exceptions",
+                nav_path=f"/projects/{{project_id}}/modules/{TRACEABILITY_MODULE_KEY}/exceptions",
+                nav_icon="shield-check",
+                sub_component=TRACEABILITY_EXCEPTIONS,
+            ),
+        ),
     ),
     sub_components=(
         ModuleSubComponentDefinition(key=LIFECYCLE_POLICIES, name="Lifecycle policies"),
@@ -170,6 +215,7 @@ MODULE_DEFINITION = ModuleDefinition(
         ModuleSubComponentDefinition(key=TRACEABILITY_RULES, name="Traceability rules"),
         ModuleSubComponentDefinition(
             key=TRACEABILITY_EXCEPTIONS, name="Traceability exceptions", requires=(TRACEABILITY_RULES,),
+            artefact_types=(EXCEPTION_ARTEFACT_TYPE,),
         ),
         ModuleSubComponentDefinition(key=TRACEABILITY_MATRICES, name="Traceability matrices"),
         ModuleSubComponentDefinition(
@@ -237,12 +283,45 @@ MODULE_DEFINITION = ModuleDefinition(
             export_rows=baseline_policy.export_rows, import_rows=baseline_policy.import_rows, sub_component=BASELINE_POLICIES,
         ),
     ),
+    artefact_types=(EXCEPTION_ARTEFACT_TYPE,),
+    artefact_type_labels={EXCEPTION_ARTEFACT_TYPE: "Traceability exception"},
+    not_linkable={
+        EXCEPTION_ARTEFACT_TYPE: (
+            "An exception names the one record and rule it is about in its own fields; links would suggest a second way "
+            "to say what it covers."
+        ),
+    },
+    default_code_prefixes={EXCEPTION_ARTEFACT_TYPE: EXCEPTION_CODE_PREFIX},
+    artefact_ids_in_organization=_artefact_ids_in_organization,
+    resolve_file_owner_project_id=resolve_file_owner_project_id,
+    artefact_summary_providers=exception_records.SUMMARY_PROVIDERS,
+    search_providers=exception_records.SEARCH_PROVIDERS,
+    report_fields=exception_records.REPORT_FIELDS,
+    record_attachments=exception_records.RECORD_ATTACHMENTS,
+    markdown_fields=exception_records.MARKDOWN_FIELDS,
+    record_tables=exception_records.RECORD_TABLES,
+    scaling_probes=exception_records.SCALING_PROBES,
+    perf_generators={
+        EXCEPTION_ARTEFACT_TYPE: PerfDatasetGenerator(generate=exception_perf.generate_exceptions, order=140),
+    },
+    lifecycles=exception_governance.LIFECYCLES,
+    review_adapters=exception_governance.REVIEW_ADAPTERS,
+    health_providers=exception_governance.HEALTH_PROVIDERS,
+    notification_types=exceptions.NOTIFICATION_TYPES,
     rule_condition_fields=rule_fields.FIELDS,
     stage_workflow_references=stage_workflow_policy.references,
     principal_references=(
         PrincipalReference(
             model=GovernanceReviewPolicy, field="default_owner", label="governance review policy default owners",
             audit_entity_type=review_policy.PROJECT_AUDIT_ENTITY_TYPE,
+        ),
+        PrincipalReference(
+            model=TraceabilityException, field="requester", label="traceability exception requesters",
+            audit_entity_type=EXCEPTION_ARTEFACT_TYPE, mandatory=True,
+        ),
+        PrincipalReference(
+            model=TraceabilityException, field="approver", label="traceability exception approvers",
+            audit_entity_type=EXCEPTION_ARTEFACT_TYPE,
         ),
     ),
     activity_metadata_types={

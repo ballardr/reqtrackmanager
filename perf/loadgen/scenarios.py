@@ -102,6 +102,10 @@ class PerfUser(HttpUser):
         samples = self.project.get("type_samples", {})
         return [t for t in self.environment.shared.record_types if samples.get(t) and t not in exclude]
 
+    def linkable(self, exclude: tuple = ()) -> list[str]:
+        """`typed` without the types that take no links."""
+        return [t for t in self.typed(exclude) if self.environment.shared.record_types[t].get("linkable", True)]
+
     def record_of(self, artefact_type: str) -> str:
         """A sampled record of the type."""
         return random.choice(self.project["type_samples"][artefact_type])
@@ -475,21 +479,21 @@ class _LinkReads(PerfUser):
 
     @task(4)
     def graph_from_hub(self) -> None:
-        types = self.typed(exclude=())
+        types = self.linkable()
         if types:
             t, depth = random.choice(types), random.choice((1, 2, 3))
             self.get(f"{self.base}/artefacts/{t}/{self.hub_of(t)}/link-graph?depth={depth}", f"GET link-graph depth={depth} (hub)")
 
     @task(2)
     def graph_from_record(self) -> None:
-        types = self.typed(exclude=())
+        types = self.linkable()
         if types:
             t = random.choice(types)
             self.get(f"{self.base}/artefacts/{t}/{self.record_of(t)}/link-graph?depth=2", "GET link-graph depth=2 (record)")
 
     @task(3)
     def candidates(self) -> None:
-        types = self.typed(exclude=())
+        types = self.linkable()
         if len(types) > 1:
             t, other = random.sample(types, 2)
             self.get(
@@ -499,14 +503,14 @@ class _LinkReads(PerfUser):
 
     @task(2)
     def browse(self) -> None:
-        types = self.typed(exclude=())
+        types = self.linkable()
         if len(types) > 1:
             t, other = random.sample(types, 2)
             self.get(f"{self.base}/artefacts/{t}/{self.record_of(t)}/link-browse?other_type={other}", f"GET link-browse ({other})")
 
     @task(1)
     def link_types(self) -> None:
-        types = self.typed(exclude=())
+        types = self.linkable()
         if types:
             t = random.choice(types)
             self.get(f"{self.base}/artefacts/{t}/{self.record_of(t)}/link-types?other_type=requirement", "GET link-types")
@@ -541,7 +545,7 @@ class LinksMixed(_LinkReads):
 
     @task(2)
     def link_and_unlink(self) -> None:
-        types = self.typed(exclude=("requirement",))
+        types = self.linkable(exclude=("requirement",))
         if not types:
             return
         t = random.choice(types)

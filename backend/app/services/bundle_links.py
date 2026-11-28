@@ -127,6 +127,8 @@ def import_artefact_links(
         warnings: Collects each link that could not be recreated.
         context: Prefix for warnings (the module's name).
     """
+    if not entries:
+        return  # a module with no links must cost an import no reads
     requirement_ids = {
         r.unique_code: r.id for r in db.scalars(select(Requirement).where(Requirement.project_id == project.id))
     }
